@@ -1,0 +1,26 @@
+{
+  "text": "BASELINE_OK",
+  "stopReason": "EndTurn",
+  "sessionId": "019fb0db-f867-78e3-bcc6-4c31e25d234f",
+  "requestId": "eb4de8b9-8f1c-43a8-83b1-ca137a336492",
+  "thought": "The user wants me to reply with exactly the token BASELINE_OK and nothing else.",
+  "usage": {
+    "input_tokens": 2624,
+    "cache_read_input_tokens": 11136,
+    "output_tokens": 29,
+    "reasoning_tokens": 21,
+    "total_tokens": 13789
+  },
+  "num_turns": 1,
+  "total_cost_usd": 0.0087628,
+  "total_cost_usd_ticks": 87628000,
+  "modelUsage": {
+    "grok-4.5-build": {
+      "inputTokens": 2624,
+      "outputTokens": 29,
+      "cacheReadInputTokens": 11136,
+      "modelCalls": 1,
+      "costUSD": 0.0087628
+    }
+  }
+}

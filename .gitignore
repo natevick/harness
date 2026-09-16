@@ -1,0 +1,13 @@
+# secrets / local runs
+.env
+.env.*
+!.env.example
+secrets/
+**/jails/
+**/runs/
+*.pem
+*.key
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/

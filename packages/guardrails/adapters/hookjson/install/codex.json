@@ -1,0 +1,97 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/unbounded_goal_challenge.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/brevity_streak_hint.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/pipe_exit_code_guard.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/pkill_self_match_guard.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/review_brevity_guard.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/comment_discipline_guard.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/delegation_nudge.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/truncated_output_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/brevity_guard.py",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/commitment_guard.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

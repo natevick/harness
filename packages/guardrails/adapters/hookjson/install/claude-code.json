@@ -1,0 +1,87 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/unbounded_goal_challenge.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/brevity_streak_hint.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/pipe_exit_code_guard.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/pkill_self_match_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|mcp__.*(?:slack_send_message|save_comment|save_issue)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/review_brevity_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/comment_discipline_guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Agent|Workflow|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/delegation_nudge.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/truncated_output_guard.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/brevity_guard.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/commitment_guard.py"
+          }
+        ]
+      }
+    ]
+  }
+}

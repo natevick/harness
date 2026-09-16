@@ -1,0 +1,23 @@
+name: guardrails-test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/guardrails/**'
+      - '.github/workflows/guardrails-test.yml'
+  pull_request:
+    paths:
+      - 'packages/guardrails/**'
+      - '.github/workflows/guardrails-test.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/guardrails
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run guardrails tests
+        run: bash tests/run.sh

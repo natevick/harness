@@ -1,0 +1,19 @@
+This repository is a dependency-free JavaScript pricing engine (ESM, Node 22). Its test
+suite is currently failing.
+
+Your task: make the entire test suite pass.
+
+Run the suite with:  node --test
+
+Rules:
+- Do NOT modify, delete, or add anything under test/. The tests are correct and they define
+  the required behaviour.
+- Do NOT modify package.json and do NOT add dependencies.
+- Fix the defects in src/ only.
+- The doc comment above each exported function states its contract. Where a doc comment and
+  a test disagree, the test is right.
+- Do not create a git branch, do not commit, and do not push. Just leave the fixed files in
+  the working tree.
+
+You are done when `node --test` reports 0 failures. Run it one final time to confirm before
+you finish, then reply with a one-paragraph summary of the defects you fixed.

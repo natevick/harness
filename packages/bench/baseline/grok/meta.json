@@ -1,0 +1,8 @@
+{
+  "seat": "grok",
+  "workdir": "${HOME}/projects/harness-bench/baseline/work-grok",
+  "exit_code": 0,
+  "start_ms": 1785378633113,
+  "end_ms": 1785378635383,
+  "wall_ms": 2270
+}

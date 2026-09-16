@@ -1,0 +1,8 @@
+{
+  "seat": "claude",
+  "workdir": "${HOME}/projects/harness-bench/baseline/work-claude",
+  "exit_code": 0,
+  "start_ms": 1785378623271,
+  "end_ms": 1785378631322,
+  "wall_ms": 8051
+}

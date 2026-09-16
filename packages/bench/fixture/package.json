@@ -1,0 +1,10 @@
+{
+  "name": "pricing-engine",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Integer-cents pricing, discount, tax and proration engine.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

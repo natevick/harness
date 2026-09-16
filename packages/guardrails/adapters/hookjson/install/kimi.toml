@@ -1,0 +1,41 @@
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/pipe_exit_code_guard.py"
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/pkill_self_match_guard.py"
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/review_brevity_guard.py"
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Write|Edit|MultiEdit|Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/comment_discipline_guard.py"
+timeout = 10
+
+[[hooks]]
+event = "PreToolUse"
+matcher = "Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/delegation_nudge.py"
+timeout = 10
+
+[[hooks]]
+event = "UserPromptSubmit"
+matcher = ""
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/unbounded_goal_challenge.py"
+timeout = 10
+
+[[hooks]]
+event = "UserPromptSubmit"
+matcher = ""
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/brevity_streak_hint.py"
+timeout = 10

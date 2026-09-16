@@ -1,0 +1,178 @@
+[
+  {
+    "seat": "claude",
+    "workdir": "${HOME}/projects/harness-bench/runs/claude",
+    "exit_code": 0,
+    "start_ms": 1785378754281,
+    "end_ms": 1785378869137,
+    "wall_ms": 114856,
+    "usage": {
+      "prompt_tokens": 709021,
+      "input_fresh": 36,
+      "cache_write": 29087,
+      "cache_read": 679898,
+      "output_tokens": 7344,
+      "side_model_tokens": 738,
+      "total_tokens": 717103,
+      "turns": 19,
+      "reported_cost_usd": 0.815401,
+      "harness_duration_ms": 113864,
+      "final_text": "`node --test` \u2192 **39 passing, 0 failing.** Only `src/` touched; nothing committed. \u26a1\n\n(Heads up: your `node` shim is dead \u2014 mise refuses to load `~/.config/mise/config.toml` until you `mise trust` it. I ran the suite with `/usr/bin/node` v22.22.2.)\n\nEight defects, one per module. **money.js** used `Math.round`, which breaks ties toward +\u221e instead of away from zero and inherits binary-float error, so `toCents('1.005')` gave 100 and `mulCents(-101, 0.5)` gave -50; I added a half-away-from-zero rounder and made `toCents` scale to thousandths before resolving the third digit. **currency.js** interpolated the raw remainder without zero-padding, rendering 5 cents as `$0.5`. **coupon.js** used exclusive comparisons on the wrong side of both bounds \u2014 `>=` on `expiresAt` rejected the final instant, and `>` on `maxUses` let a coupon redeem one time past its cap. **discount.js** applied discounts in arrival order and compounded percents against the running total rather than the original subtotal, and never floored the result, so an over-discount produced a credit. **lineitem.js** discounted the unit price and then multiplied, rounding once per unit instead of once per line. **tax.js** ignored the `compound` flag entirely and charged every rule against the bare taxable amount. **proration.js** computed `periodDays` with an off-by-one `+ 1`, treating a half-open January as 32 days. **invoice.js** passed `subtotalCents` to `computeTax` instead of the discounted amount, taxing customers on money they didn't pay.",
+      "models": [
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5[1m]"
+      ]
+    },
+    "tests_total": 39,
+    "tests_pass": 39,
+    "tests_fail": 0,
+    "suite_green": true,
+    "files_changed": [
+      "src/coupon.js",
+      "src/currency.js",
+      "src/discount.js",
+      "src/invoice.js",
+      "src/lineitem.js",
+      "src/money.js",
+      "src/proration.js",
+      "src/tax.js"
+    ],
+    "files_added": [],
+    "touched_tests": [],
+    "touched_package_json": false,
+    "clean_fix": true,
+    "diff_shortstat": "8 files changed, 39 insertions(+), 15 deletions(-)"
+  },
+  {
+    "seat": "claude-cfg",
+    "workdir": "${HOME}/projects/harness-bench/runs/claude-cfg",
+    "exit_code": 0,
+    "start_ms": 1785378765125,
+    "end_ms": 1785378899561,
+    "wall_ms": 134436,
+    "usage": {
+      "prompt_tokens": 472347,
+      "input_fresh": 16,
+      "cache_write": 51510,
+      "cache_read": 420821,
+      "output_tokens": 10658,
+      "side_model_tokens": 737,
+      "total_tokens": 483742,
+      "turns": 31,
+      "reported_cost_usd": 0.9928375,
+      "harness_duration_ms": 133012,
+      "final_text": "`node --test` \u2192 39 pass, 0 fail. Eight one-defect-per-module bugs, all in `src/`: \u26a1\n\n**money.js** \u2014 both rounding helpers used bare `Math.round`, which rounds ties toward +\u221e (so `-101 \u00d7 0.5` gave `-50`, not `-51`) and was also at the mercy of IEEE 754 dust (`1.005 \u00d7 100` is `100.49999999999999`, so `toCents('1.005')` gave 100). Added a shared `roundCents` that snaps to 15 significant digits, then rounds half away from zero, and normalises `-0`. **currency.js** \u2014 the cents remainder was interpolated unpadded, rendering 5 cents as `$0.5`; now `padStart(2, '0')`. **discount.js** \u2014 percent discounts were computed against the running total (so they compounded with each other and depended on arrival order) and the result wasn't floored; now every percent is computed against the original subtotal in a first pass, fixed amounts subtract in a second, and the total clamps at zero. **coupon.js** \u2014 two off-by-one boundaries: the expiry check excluded the last valid instant (`>=` \u2192 `>`) and the usage check let redemptions past the cap through (`>` \u2192 `>=`). **lineitem.js** \u2014 the discount was applied per unit and then multiplied, rounding once per unit; now the line gross is computed first and discounted once. **tax.js** \u2014 the `compound` flag was read but never used, so compound rules charged the bare taxable amount; the base is now taxable + tax accumulated by preceding rules. **proration.js** \u2014 `periodDays` had a spurious `+ 1`, treating a half-open January as 32 days. **invoice.js** \u2014 tax was charged on `subtotalCents` instead of the discounted amount.",
+      "models": [
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5[1m]"
+      ]
+    },
+    "tests_total": 39,
+    "tests_pass": 39,
+    "tests_fail": 0,
+    "suite_green": true,
+    "files_changed": [
+      "src/coupon.js",
+      "src/currency.js",
+      "src/discount.js",
+      "src/invoice.js",
+      "src/lineitem.js",
+      "src/money.js",
+      "src/proration.js",
+      "src/tax.js"
+    ],
+    "files_added": [],
+    "touched_tests": [],
+    "touched_package_json": false,
+    "clean_fix": true,
+    "diff_shortstat": "8 files changed, 31 insertions(+), 15 deletions(-)"
+  },
+  {
+    "seat": "codex",
+    "workdir": "${HOME}/projects/harness-bench/runs/codex",
+    "exit_code": 0,
+    "start_ms": 1785378756977,
+    "end_ms": 1785378948876,
+    "wall_ms": 191899,
+    "usage": {
+      "prompt_tokens": 147124,
+      "input_fresh": 32692,
+      "cache_write": null,
+      "cache_read": 114432,
+      "output_tokens": 5000,
+      "side_model_tokens": 0,
+      "total_tokens": 152124,
+      "turns": 1,
+      "peak_prompt_tokens": 147124,
+      "reported_cost_usd": null,
+      "harness_duration_ms": null,
+      "final_text": "Fixed all pricing-engine defects in `src/`: cent formatting and half-away-from-zero rounding, coupon boundaries and usage caps, discount ordering/flooring, line-total rounding, compound tax calculation, discounted invoice tax basis, and half-open proration. Final `node --test` result: 8 suites passed, 0 failures.",
+      "models": [
+        "gpt-5.6-sol (xhigh)"
+      ]
+    },
+    "tests_total": 39,
+    "tests_pass": 39,
+    "tests_fail": 0,
+    "suite_green": true,
+    "files_changed": [
+      "src/coupon.js",
+      "src/currency.js",
+      "src/discount.js",
+      "src/invoice.js",
+      "src/lineitem.js",
+      "src/money.js",
+      "src/proration.js",
+      "src/tax.js"
+    ],
+    "files_added": [],
+    "touched_tests": [],
+    "touched_package_json": false,
+    "clean_fix": true,
+    "diff_shortstat": "8 files changed, 22 insertions(+), 15 deletions(-)"
+  },
+  {
+    "seat": "grok",
+    "workdir": "${HOME}/projects/harness-bench/runs/grok",
+    "exit_code": 0,
+    "start_ms": 1785378758949,
+    "end_ms": 1785378941919,
+    "wall_ms": 182970,
+    "usage": {
+      "prompt_tokens": 272495,
+      "input_fresh": 31855,
+      "cache_write": null,
+      "cache_read": 240640,
+      "output_tokens": 9477,
+      "reasoning_tokens": 4874,
+      "side_model_tokens": 0,
+      "total_tokens": 281972,
+      "turns": 9,
+      "reported_cost_usd": 0.192764,
+      "harness_duration_ms": null,
+      "final_text": "I'll start by inspecting the repo layout and running the test suite to see what's failing.The test run hung on mise setup noise. I'll kill it and run Node directly while reading the source and tests.I've mapped the failures to concrete bugs. Next I'll fix each module in `src/` to match the tests.All **39** tests pass with **0** failures.\n\n**Summary of defects fixed:** Across `src/`, the engine had systematic rounding, ordering, and interval bugs. In `money.js`, `toCents` used float `Math.round(n * 100)` (so values like `1.005` lost the half-cent to binary FP) and `mulCents` used `Math.round`, which does not round half away from zero for negatives; both now use half-away-from-zero rounding with decimal-safe parsing. `currency.js` did not zero-pad the fractional part (e.g. `$0.5` instead of `$0.05`). `lineitem.js` discounted the unit price before multiplying by quantity instead of the line total once. `discount.js` applied discounts in input order and compounded percents, and could go negative; it now applies all percents against the original subtotal, then fixed amounts, then floors at zero. `tax.js` ignored `compound: true` (always taxing the base only). `coupon.js` treated `expiresAt` as exclusive and allowed redemption when `usageCount === maxUses`. `proration.js` used a closed-interval day count (`+ 1`), making January 32 days. `invoice.js` taxed the pre-discount subtotal instead of the discounted amount.",
+      "models": [
+        "grok-4.5-build"
+      ]
+    },
+    "tests_total": 39,
+    "tests_pass": 39,
+    "tests_fail": 0,
+    "suite_green": true,
+    "files_changed": [
+      "src/coupon.js",
+      "src/currency.js",
+      "src/discount.js",
+      "src/invoice.js",
+      "src/lineitem.js",
+      "src/money.js",
+      "src/proration.js",
+      "src/tax.js"
+    ],
+    "files_added": [],
+    "touched_tests": [],
+    "touched_package_json": false,
+    "clean_fix": true,
+    "diff_shortstat": "8 files changed, 89 insertions(+), 17 deletions(-)"
+  }
+]

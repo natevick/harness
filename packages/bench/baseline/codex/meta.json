@@ -1,0 +1,8 @@
+{
+  "seat": "codex",
+  "workdir": "${HOME}/projects/harness-bench/baseline/work-codex",
+  "exit_code": 0,
+  "start_ms": 1785378630811,
+  "end_ms": 1785378635318,
+  "wall_ms": 4507
+}

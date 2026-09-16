@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019fb0db-f12a-7e32-9e6c-ea2da875551d"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"BASELINE_OK"}}
+{"type":"turn.completed","usage":{"input_tokens":17821,"cached_input_tokens":0,"output_tokens":7,"reasoning_output_tokens":0}}
