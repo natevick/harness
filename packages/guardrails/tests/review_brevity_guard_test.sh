@@ -50,27 +50,31 @@ words 400 > "$TMP/w400.md"
 words 151 > "$TMP/w151.md"
 
 echo "── GITHUB REVIEWS — 200 body / 150 inline, and every comment names a fix ──"
-payload "$(python3 -c "
+payload "$(python3 -c '
 import json
-print(json.dumps({'body': ' '.join(['word'] * 201), 'event': 'COMMENT', 'comments': []}))")"
+print(json.dumps({"body": " ".join(["word"] * 201), "event": "COMMENT", "comments": []}))
+')"
 check deny "a review body past 200" "gh api repos/o/r/pulls/7/reviews --input $TMP/payload.json"
 
-payload "$(python3 -c "
+payload "$(python3 -c '
 import json
-print(json.dumps({'body': 'Short.', 'comments': [
-  {'path': 'a.rb', 'line': 4, 'body': ' '.join(['word'] * 151) + '\n\n**Fix:** Trim it.'}]}))")"
+print(json.dumps({"body": "Short.", "comments": [
+  {"path": "a.rb", "line": 4, "body": " ".join(["word"] * 151) + "\n\n**Fix:** Trim it."}]}))
+')"
 check deny "an inline comment past 150" "gh api repos/o/r/pulls/7/reviews --input $TMP/payload.json"
 
-payload "$(python3 -c "
+payload "$(python3 -c '
 import json
-print(json.dumps({'body': 'Short.', 'comments': [
-  {'path': 'a.rb', 'line': 4, 'body': 'This reads oddly, but I am not asking for a change.'}]}))")"
+print(json.dumps({"body": "Short.", "comments": [
+  {"path": "a.rb", "line": 4, "body": "This reads oddly, but I am not asking for a change."}]}))
+')"
 check deny "an inline comment that names no fix" \
   "gh api repos/o/r/pulls/7/reviews --input $TMP/payload.json"
 
-payload "$(python3 -c "
+payload "$(python3 -c '
 import json
-print(json.dumps({'path': 'a.rb', 'line': 4, 'body': 'A thought with no ask.'}))")"
+print(json.dumps({"path": "a.rb", "line": 4, "body": "A thought with no ask."}))
+')"
 check deny "a single inline comment posted on its own" \
   "gh api repos/o/r/pulls/7/comments --input $TMP/payload.json"
 
@@ -78,14 +82,15 @@ check deny "gh pr review --body-file past 200" "gh pr review 7 --comment --body-
 check allow "gh pr review --body-file exactly at 200" \
   "gh pr review 7 --comment --body-file $TMP/w200.md"
 
-payload "$(python3 -c "
+payload "$(python3 -c '
 import json
-evidence = '\`\`\`\n' + '\n'.join(['2026-08-19 log line here'] * 300) + '\n\`\`\`'
-table = '| a | b |\n|---|---|\n' + '\n'.join(['| 1 | 2 |'] * 200)
-print(json.dumps({'body': 'Two findings, both anchored.\n\n' + evidence + '\n\n' + table,
-                  'comments': [{'path': 'a.rb', 'line': 4,
-                                'body': 'Off-by-one.\n\n\`\`\`ruby\n' + '\n'.join(['x = 1'] * 200) +
-                                        '\n\`\`\`\n\n**Fix:** Start at 0.'}]}))")"
+evidence = "```\n" + "\n".join(["2026-08-19 log line here"] * 300) + "\n```"
+table = "| a | b |\n|---|---|\n" + "\n".join(["| 1 | 2 |"] * 200)
+print(json.dumps({"body": "Two findings, both anchored.\n\n" + evidence + "\n\n" + table,
+                  "comments": [{"path": "a.rb", "line": 4,
+                                "body": "Off-by-one.\n\n```ruby\n" + "\n".join(["x = 1"] * 200) +
+                                        "\n```\n\n**Fix:** Start at 0."}]}))
+')"
 check allow "evidence, fences and tables cost nothing" \
   "gh api repos/o/r/pulls/7/reviews --input $TMP/payload.json"
 

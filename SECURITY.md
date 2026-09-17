@@ -1,6 +1,6 @@
 # Security notes
 
-Honest residual risk for a private monorepo that installs local hooks and runs agent benches.
+Honest residual risk for this public monorepo that installs local hooks and runs agent benches.
 
 ## What stays local
 
@@ -24,7 +24,22 @@ Those links are for local bench runs only. **`jail/` and `runs/` are gitignored 
 - Do not commit `.env`, PATs, private keys, or auth JSON.
 - Root and package `.gitignore` already exclude common secret patterns, `runs/`, `jail/`, and `jails/`.
 - Guard adapters hash subjects in local decision logs; still assume a machine compromise can read `0700` state under your account.
+- CI workflows use no `secrets.*` inputs; they only check out the tree and run offline tests / installer `-h` smoke.
+
+## GitHub security features (maintainers)
+
+Enable GitHub's native protections with the Security Lab CLI (not part of CI):
+
+```sh
+gh extension install GitHubSecurityLab/gh-secure
+gh secure status --repo natevick/harness
+# Prefer for public OSS (skip branch-protection if a ruleset already covers main):
+gh secure --repo natevick/harness secret-scanning dependabot vulnerability-reporting code-scanning --yes
+```
+
+A repository ruleset may already enforce CodeQL and pull-request reviews on the default branch. Fine-grained PATs sometimes lack `Administration` / security-settings scopes — enable any remaining toggles under
+[Settings → Code security](https://github.com/natevick/harness/settings/security_analysis) if `gh secure` reports failures.
 
 ## Reporting
 
-This repo is private. Report issues to the owner (Nate Vick) directly.
+This repository is public. Prefer GitHub Security Advisories / private vulnerability reporting when enabled; otherwise open an issue or contact the owner (Nate Vick).

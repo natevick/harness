@@ -2,7 +2,7 @@
 set -uo pipefail
 
 HOOK="$(cd "$(dirname "$0")/../adapters/hookjson" && pwd)/comment_discipline_guard.py"
-TMP="$(mktemp -d -p "${HOME:?}" .guardrails-hooktest-XXXXXX)"
+TMP="$(mktemp -d "${HOME:?}/.guardrails-hooktest-XXXXXX")"
 trap 'rm -rf "${TMP:?}"' EXIT
 pass=0
 fail=0

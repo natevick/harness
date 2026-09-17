@@ -23,12 +23,19 @@ state() { printf '%s' "$STATE"; }
 fire() {
   local payload="$1" budget="${2:-150}" wait="${3:-2}" block_at="${4:-}"
   local out
-  local -a knobs=()
-  [ -n "$block_at" ] && knobs=(GUARDRAILS_BREVITY_BLOCK_AT="$block_at")
-  out="$(printf '%s' "$payload" \
-    | env GUARDRAILS_BREVITY_BUDGET="$budget" GUARDRAILS_BREVITY_FLUSH_WAIT="$wait" \
-      GUARDRAILS_STATE_DIR="$STATE" HOME="$TMP" "${knobs[@]}" \
-      "$PY" "$HOOK" 2>"$TMP/stderr")"
+  # Avoid empty "${arr[@]}" under set -u (bash 3.2 / macOS /bin/bash).
+  if [ -n "$block_at" ]; then
+    out="$(printf '%s' "$payload" \
+      | env GUARDRAILS_BREVITY_BUDGET="$budget" GUARDRAILS_BREVITY_FLUSH_WAIT="$wait" \
+        GUARDRAILS_STATE_DIR="$STATE" HOME="$TMP" \
+        GUARDRAILS_BREVITY_BLOCK_AT="$block_at" \
+        "$PY" "$HOOK" 2>"$TMP/stderr")"
+  else
+    out="$(printf '%s' "$payload" \
+      | env GUARDRAILS_BREVITY_BUDGET="$budget" GUARDRAILS_BREVITY_FLUSH_WAIT="$wait" \
+        GUARDRAILS_STATE_DIR="$STATE" HOME="$TMP" \
+        "$PY" "$HOOK" 2>"$TMP/stderr")"
+  fi
   rc=$?
   err="$(cat "$TMP/stderr")"
   printf '%s' "$out"
