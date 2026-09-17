@@ -1,6 +1,6 @@
 # Security notes
 
-Honest residual risk for a private monorepo that installs local hooks and runs agent benches.
+Honest residual risk for this public monorepo that installs local hooks and runs agent benches.
 
 ## What stays local
 
@@ -27,4 +27,4 @@ Those links are for local bench runs only. **`jail/` and `runs/` are gitignored 
 
 ## Reporting
 
-This repo is private. Report issues to the owner (Nate Vick) directly.
+This repository is public. Prefer GitHub Security Advisories for sensitive reports; otherwise open an issue or contact the owner (Nate Vick).

@@ -59,7 +59,10 @@ See [`SECURITY.md`](SECURITY.md) for state-dir permissions, decision logging, an
 
 ## CI
 
-Push/PR runs `packages/guardrails/tests/run.sh` via [`.github/workflows/guardrails-test.yml`](.github/workflows/guardrails-test.yml).
+Push/PR (and manual `workflow_dispatch`) runs on **Linux and macOS** via [`.github/workflows/guardrails-test.yml`](.github/workflows/guardrails-test.yml):
+
+- Smoke: root and per-package `install.sh -h`
+- Primary: `packages/guardrails/tests/run.sh` (Python 3.10+)
 
 ## License
 

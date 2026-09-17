@@ -5,19 +5,41 @@ on:
     branches: [main]
     paths:
       - 'packages/guardrails/**'
+      - 'packages/*/install.sh'
+      - 'install.sh'
       - '.github/workflows/guardrails-test.yml'
   pull_request:
     paths:
       - 'packages/guardrails/**'
+      - 'packages/*/install.sh'
+      - 'install.sh'
       - '.github/workflows/guardrails-test.yml'
+  workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/guardrails
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Smoke installers (-h)
+        run: |
+          set -euo pipefail
+          ./install.sh -h
+          ./packages/guardrails/install.sh -h
+          ./packages/discipline/install.sh -h
+          ./packages/bench/install.sh -h
+
       - name: Run guardrails tests
+        working-directory: packages/guardrails
         run: bash tests/run.sh
