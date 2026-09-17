@@ -316,16 +316,18 @@ if [ -s "$TMP/state/decisions.jsonl" ] && grep -q 'subject_digest' "$TMP/state/d
 else
   fail=$((fail + 1)); echo "  FAIL the deny was not recorded at all"
 fi
-modes="$(find "$TMP/state" -type f -exec stat -c %a {} + | sort -u | tr '\n' ' ')"
+# Portable mode bits (GNU stat -c is Linux-only; macOS uses stat -f).
+file_mode() { python3 -c 'import os,sys; print("%03o" % (os.stat(sys.argv[1]).st_mode & 0o777))' "$1"; }
+modes="$(find "$TMP/state" -type f -print0 | while IFS= read -r -d "" f; do file_mode "$f"; done | sort -u | tr '\n' ' ')"
 if [ "$modes" = "600 " ]; then
   pass=$((pass + 1)); echo "  ok   every state file is 0600"
 else
   fail=$((fail + 1)); printf '  FAIL state file modes were: %s\n' "$modes"
 fi
-if [ "$(stat -c %a "$TMP/state")" = "700" ]; then
+if [ "$(file_mode "$TMP/state")" = "700" ]; then
   pass=$((pass + 1)); echo "  ok   the state directory is 0700"
 else
-  fail=$((fail + 1)); printf '  FAIL state dir mode %s\n' "$(stat -c %a "$TMP/state")"
+  fail=$((fail + 1)); printf '  FAIL state dir mode %s\n' "$(file_mode "$TMP/state")"
 fi
 
 echo

@@ -90,7 +90,8 @@ seed unmeasured '{"session":"unmeasured","words":0,"budget":150,"count":0,"sourc
 record "an unmeasured reply" silent "$(run unmeasured)"
 record "a session with no state file" silent "$(run nostate)"
 seed stale '{"session":"stale","words":300,"budget":150,"count":1,"source":"payload"}'
-touch -d '2 hours ago' "$STATE/brevity-last-stale.json"
+# Portable mtime (GNU touch -d is Linux-only).
+python3 -c 'import os,time,sys; t=time.time()-7200; os.utime(sys.argv[1], (t,t))' "$STATE/brevity-last-stale.json"
 record "state older than an hour" silent "$(run stale)"
 seed corrupt 'not json'
 record "corrupt state" silent "$(run corrupt)"
