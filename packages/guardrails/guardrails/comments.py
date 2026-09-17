@@ -9,7 +9,25 @@ from . import PASS, deny
 MAX_RUN = int(os.environ.get("GUARDRAILS_COMMENT_MAX_RUN", "0"))
 
 EXEMPT_SUFFIXES = (".md", ".markdown", ".txt", ".rst")
-DEFAULT_EXEMPT = os.path.join(tempfile.gettempdir(), "")
+
+
+def _default_exempt_trees():
+    """Temp roots where scratch files should not trigger comment discipline.
+
+    Linux gettempdir() is usually /tmp. macOS gettempdir() is under /var/folders,
+    while tests and agents still write /tmp/... (symlink to /private/tmp).
+    """
+    roots = {os.path.join(tempfile.gettempdir(), "")}
+    for candidate in ("/tmp", "/private/tmp", "/var/tmp"):
+        roots.add(os.path.join(candidate, ""))
+        try:
+            roots.add(os.path.join(os.path.realpath(candidate), ""))
+        except OSError:
+            pass
+    return ":".join(sorted(roots))
+
+
+DEFAULT_EXEMPT = _default_exempt_trees()
 EXEMPT_TREES = tuple(
     tree
     for tree in os.environ.get("GUARDRAILS_COMMENT_EXEMPT", DEFAULT_EXEMPT).split(":")
