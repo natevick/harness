@@ -16,6 +16,10 @@ on:
       - '.github/workflows/guardrails-test.yml'
   workflow_dispatch:
 
+# Least privilege for GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions)
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test (${{ matrix.os }})
@@ -55,3 +59,4 @@ jobs:
       - name: Run guardrails tests
         working-directory: packages/guardrails
         run: bash tests/run.sh
+
