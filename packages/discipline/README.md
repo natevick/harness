@@ -4,11 +4,19 @@ The factory that creates guards.
 
 `packages/guardrails` is the harvest product — portable hooks with receipts. This package is the loop that produces them: fail twice → write a hook → register it → test it → optionally harvest into guardrails.
 
-## Install (playbook, not a binary)
+## Install
+
+```sh
+./install.sh                 # from this package — stages ~/.harness/discipline
+# or from the monorepo root:
+# ../../install.sh --skip-guardrails --with-discipline
+```
+
+This copies `docs/` and `templates/` only. It never edits `CLAUDE.md`, `settings.json`, or hooks — you approve those (provenance).
 
 1. Read [docs/doctrine.md](docs/doctrine.md) — the factory sentence and adjacent rules.
 2. Walk [docs/playbook.md](docs/playbook.md) the next time a correction repeats.
-3. Copy a stub from [templates/](templates/) and wire it into your agent settings.
+3. Copy a stub from [templates/](templates/) and wire it into your agent settings yourself.
 
 ## One receipt
 

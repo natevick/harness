@@ -5,6 +5,14 @@ One coding task, four agent seats — `claude` (HOME-jailed), `claude-cfg` (as c
 
 **[REPORT.md](REPORT.md) has the method, the numbers, and the conclusions.**
 
+## Install
+
+```sh
+./install.sh
+```
+
+Checks `python3` and `node`, then points at `setup-jails.sh` / `REPORT.md`.
+
 ## Layout
 
 | path | what |

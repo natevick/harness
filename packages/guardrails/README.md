@@ -46,6 +46,12 @@ nothing and fails open. A live control hook read zero commands while ours denied
 ## Install
 
 ```sh
+./install.sh --harness claude-code --target ~/.claude/settings.json --force
+# or from monorepo root: ../../install.sh --harness claude-code --target ~/.claude/settings.json --force
+```
+
+
+```sh
 adapters/hookjson/install.sh --harness codex
 adapters/hookjson/install.sh --harness codex --target .codex/hooks.json
 ```
