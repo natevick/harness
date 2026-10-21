@@ -6,6 +6,7 @@ Honest residual risk for this public monorepo that installs local hooks and runs
 
 - **Guardrails state** defaults to `${XDG_STATE_HOME:-$HOME/.local/state}/harness-guardrails` (override with `GUARDRAILS_STATE_DIR`). The directory is created `0700`; append-only logs such as `decisions.jsonl` are opened `0600`.
 - **Decision logs** record harness, event, guard, tool, a short reason, and a **SHA-256 subject digest** (12 hex chars) of the command/path — not the raw command text. Denies are logged by default; allows only when `GUARDRAILS_LOG_DECISIONS=1`.
+- **Cursor stop text** is copied to `cursor-assistant-<session>.txt` in that same directory (`0600`) so the stop hooks can read the reply. `afterAgentResponse` is the only place a cloud agent sent the assistant text; the file holds that text until the next reply overwrites it. It is not a decision log.
 - **Installers** only read/write paths you pass (`--target`) or well-known homes under `$HOME` / `$HARNESS_DISCIPLINE_HOME`. They do not walk other users' homes, upload data, or phone home.
 - **Discipline install** copies templates into a staging directory; it never edits `CLAUDE.md`, settings, or hooks for you.
 

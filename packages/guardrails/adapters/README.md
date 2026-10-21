@@ -59,7 +59,11 @@ to the normalizer, its deny shape to `decide`, and a registration template under
 `hookjson/install/`. Add a case to `tests/normalizer_test.sh` proving the same guard payload in
 that dialect reaches the same verdict, and a probe in `tests/live/run.sh`.
 
-If it does not — Cursor's `beforeShellExecution`, Gemini's `BeforeTool`, OpenCode's in-process
-plugins, Prime Agent's TypeScript extensions — it needs its own directory. Those contracts are the
-subject of separate research and are deliberately not guessed at here: an adapter written from
-assumption passes its own tests and fires on nothing real.
+If it does not, it needs its own directory. Cursor's payloads are not Claude-shaped
+(`beforeShellExecution` sends `command` at the top level, `preToolUse` names the tool `Shell`
+rather than `Bash`), so it lives in [`cursor/`](cursor/). The contract, what was executed in a
+cloud agent versus only read, and how to turn it on are in [`../docs/cursor.md`](../docs/cursor.md).
+
+Gemini's `BeforeTool`, OpenCode's in-process plugins, and Prime Agent's TypeScript extensions are
+still not guessed at: an adapter written from assumption passes its own tests and fires on nothing
+real.

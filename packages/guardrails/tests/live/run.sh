@@ -8,7 +8,7 @@ EVIDENCE="$LIVE/evidence"
 MARKERS="$LIVE/markers"
 TIMEOUT="${GUARDRAILS_LIVE_TIMEOUT:-180}"
 
-HARNESSES="${1:-claude-code codex grok kimi}"
+HARNESSES="${1:-claude-code codex grok kimi cursor}"
 
 pass=0
 fail=0
@@ -216,6 +216,24 @@ json.dump(config, open(target, "w"), indent=2)
   fi
 }
 
+run_cursor() {
+  local state; state="$(state_for cursor)"
+  mkdir -p "$state"
+  "$REPO_ROOT/adapters/cursor/install.sh" --harness cursor --force \
+    --target "$PROJECT/.cursor/hooks.json" > "$EVIDENCE/cursor-install.txt" 2>&1 || true
+  note "registered: $PROJECT/.cursor/hooks.json"
+
+  local reason
+  if ! command -v cursor-agent >/dev/null 2>&1 && ! command -v agent >/dev/null 2>&1; then
+    reason="no cursor-agent binary to drive a turn. Cloud agents load .cursor/hooks.json inside the VM;"
+    reason="$reason this probe does not spawn one. Captured contract: packages/guardrails/docs/cursor.md."
+  else
+    reason="a cursor binary is on PATH but this probe has no headless turn wired for it yet."
+  fi
+  verdict SKIP "cursor must-deny" "$reason"
+  verdict SKIP "cursor must-pass" "$reason"
+}
+
 run_kimi() {
   local home="$LIVE/kimi-home" log="$EVIDENCE/kimi-relocated-home.txt" rc=0
   mkdir -p "$home"
@@ -242,6 +260,7 @@ for harness in $HARNESSES; do
     codex) run_codex ;;
     grok) run_grok ;;
     kimi) run_kimi ;;
+    cursor) run_cursor ;;
     *) verdict SKIP "$harness" "no probe defined" ;;
   esac
   echo

@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/pipe_exit_code_guard.py",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/pkill_self_match_guard.py",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/review_brevity_guard.py",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/comment_discipline_guard.py",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/pipe_exit_code_guard.py",
+        "matcher": "Shell",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/pkill_self_match_guard.py",
+        "matcher": "Shell",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/review_brevity_guard.py",
+        "matcher": "Shell|MCP:.*(slack_send_message|save_comment|save_issue)",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/comment_discipline_guard.py",
+        "matcher": "Shell|Write",
+        "timeout": 10,
+        "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/delegation_nudge.py",
+        "matcher": "Shell|Task",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/truncated_output_guard.py",
+        "matcher": "Shell",
+        "timeout": 10
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/delegation_nudge.py",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/unbounded_goal_challenge.py",
+        "timeout": 10
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/brevity_streak_hint.py",
+        "timeout": 10
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/assistant_text_store.py",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/brevity_guard.py",
+        "timeout": 30,
+        "loop_limit": 5
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/commitment_guard.py",
+        "timeout": 30,
+        "loop_limit": 5
+      }
+    ]
+  }
+}

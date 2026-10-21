@@ -16,15 +16,16 @@ Clone this repo, then from the root:
 ./install.sh --harness claude-code --all --force
 ```
 
-Harnesses: `claude-code`, `codex`, `kimi`, `grok`. Omit `--target` to print the snippet instead of writing a file.
+Harnesses: `claude-code`, `codex`, `kimi`, `grok`, `cursor`. Omit `--target` to print the snippet instead of writing a file. Cursor cloud agents load project `.cursor/hooks.json` only — see [`packages/guardrails/docs/cursor.md`](packages/guardrails/docs/cursor.md).
 
 ### Root `install.sh` flags
 
 | Flag | Meaning |
 |------|---------|
-| `--harness <name>` | Which agent to wire: `claude-code`, `codex`, `kimi`, or `grok`. Required unless `--skip-guardrails`. |
+| `--harness <name>` | Which agent to wire: `claude-code`, `codex`, `kimi`, `grok`, or `cursor`. Required unless `--skip-guardrails`. |
 | `--target <path>` | Guardrails config file to write (e.g. `~/.claude/settings.json`). Omit to print the registration snippet only. Forwarded only to guardrails — not to discipline. |
 | `--force` | Overwrite an existing guardrails config and/or replace an existing discipline home. |
+| `--portable` | Cursor only. Hook commands expand `${HARNESS_ROOT:-$HOME/.harness/src}` so a committed `.cursor/hooks.json` works after the VM clones harness there. |
 | `--with-discipline` | Stage `packages/discipline` docs/templates under `~/.harness/discipline` (or `$HARNESS_DISCIPLINE_HOME`). Never edits `CLAUDE.md` / settings. |
 | `--with-bench` | Run the bench deps check (`python3` + `node`) and print how to run seats. Does not wire hooks. |
 | `--skip-guardrails` | Skip the default guardrails install; use with `--with-discipline` and/or `--with-bench`. |
@@ -41,7 +42,7 @@ Harnesses: `claude-code`, `codex`, `kimi`, `grok`. Omit `--target` to print the 
 
 | Package | Flags | What it does |
 |---------|-------|--------------|
-| `packages/guardrails` | `--harness`, `--target`, `--force` (plus `-h`/`--help`) | Thin wrapper around `adapters/hookjson/install.sh`. Needs Python 3.10+. Writes/merges harness hook config, or prints the snippet when `--target` is omitted. |
+| `packages/guardrails` | `--harness`, `--target`, `--force`, and for cursor `--portable` (plus `-h`/`--help`) | Sends `cursor` to `adapters/cursor/install.sh` and every other harness to `adapters/hookjson/install.sh`. Needs Python 3.10+. Writes/merges harness hook config, or prints the snippet when `--target` is omitted. |
 | `packages/discipline` | `--target`, `--force` (plus `-h`/`--help`) | Copies `docs/` and `templates/` into a local discipline home (`--target` or `$HARNESS_DISCIPLINE_HOME` or `~/.harness/discipline`). Does **not** edit agent instructions. |
 | `packages/bench` | deps check only (`-h`/`--help`) | Verifies `python3` and `node` on PATH, then prints `setup-jails.sh` / `setup-runs.sh` next steps (`REAL_HOME` for jails). No hook wiring. |
 

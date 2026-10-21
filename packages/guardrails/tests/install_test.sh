@@ -227,7 +227,7 @@ echo
 echo "── BAD ARGUMENTS FAIL LOUDLY ──"
 rc=0; "$INSTALL" >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 2 ]; then ok "no --harness exits 2"; else bad "no --harness exited $rc"; fi
-rc=0; "$INSTALL" --harness cursor >/dev/null 2>&1 || rc=$?
+rc=0; "$INSTALL" --harness gemini >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 2 ]; then ok "an unsupported harness exits 2"; else bad "unknown harness exited $rc"; fi
 rc=0; "$INSTALL" --nonsense >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 2 ]; then ok "an unknown flag exits 2"; else bad "unknown flag exited $rc"; fi
