@@ -13,6 +13,7 @@ usage() {
 usage: install.sh --harness <name> [--target <path>] [--force]
 
   --harness  claude-code | codex | kimi | grok
+             (cursor has its own installer: ../cursor/install.sh)
   --target   the config file to write. Omit it and the snippet is printed instead.
   --force    required to modify a file that already exists.
 

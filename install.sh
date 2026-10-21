@@ -6,6 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 harness=""
 target=""
 force=0
+portable=0
 with_discipline=0
 with_bench=0
 skip_guardrails=0
@@ -17,9 +18,10 @@ usage: install.sh --harness <name> [options]
 Install what people can run today (guardrails hooks), optionally stage the
 factory playbook and check bench deps.
 
-  --harness <name>     claude-code | codex | kimi | grok   (required unless --skip-guardrails)
+  --harness <name>     claude-code | codex | kimi | grok | cursor   (required unless --skip-guardrails)
   --target <path>      config file for guardrails (omit = print snippet only)
   --force              overwrite existing guardrails config / discipline home
+  --portable           cursor only: commands expand \${HARNESS_ROOT:-\$HOME/.harness/src}
   --with-discipline    stage packages/discipline templates under ~/.harness/discipline
   --with-bench         verify bench deps and print how to run
   --skip-guardrails    only run the opt-in packages (still need those flags)
@@ -29,6 +31,8 @@ Examples:
   ./install.sh --harness claude-code --target ~/.claude/settings.json --force
   ./install.sh --harness claude-code --all --force
   ./packages/guardrails/install.sh --harness codex --target .codex/hooks.json --force
+  ./packages/guardrails/install.sh --harness cursor --target .cursor/hooks.json --force
+  ./install.sh --harness cursor --portable --target .cursor/hooks.json --force
 USAGE
 }
 
@@ -37,6 +41,7 @@ while [ $# -gt 0 ]; do
     --harness) harness="${2:-}"; shift 2 ;;
     --target) target="${2:-}"; shift 2 ;;
     --force) force=1; shift ;;
+    --portable) portable=1; shift ;;
     --with-discipline) with_discipline=1; shift ;;
     --with-bench) with_bench=1; shift ;;
     --skip-guardrails) skip_guardrails=1; shift ;;
@@ -51,10 +56,16 @@ if [ "$skip_guardrails" -eq 0 ] && [ -z "$harness" ]; then
   exit 2
 fi
 
+if [ "$portable" -eq 1 ] && [ "$harness" != "cursor" ]; then
+  printf -- '--portable is only supported for --harness cursor\n' >&2
+  exit 2
+fi
+
 if [ "$skip_guardrails" -eq 0 ]; then
   args=(--harness "$harness")
   [ -n "$target" ] && args+=(--target "$target")
   [ "$force" -eq 1 ] && args+=(--force)
+  [ "$portable" -eq 1 ] && args+=(--portable)
   printf '==> packages/guardrails\n'
   "$root/packages/guardrails/install.sh" "${args[@]}"
 fi

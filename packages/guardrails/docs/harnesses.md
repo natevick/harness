@@ -1,5 +1,8 @@
 # Harnesses
 
+Cursor does not speak Claude-shaped hook JSON. Its adapter, the events that fired in a
+cloud agent, and the ones that cannot carry a verdict are in [`cursor.md`](cursor.md).
+
 Four harnesses speak Claude-shaped hook JSON with variations. One adapter,
 `adapters/hookjson/`, serves all of them: `hookio.py` normalises the payload on the way in and
 renders the verdict in the shape that harness reads on the way out.

@@ -4,7 +4,7 @@
 
 These are rules a model cannot talk itself out of. Every guard exists because of a specific failure, recorded in [`docs/provenance.md`](docs/provenance.md). They come from running agents on real work, and from reading how the harnesses actually behave.
 
-Python 3.10+, standard library only. One core, adapters for Claude Code, Codex CLI, Kimi Code, and grok. Kimi has not been probed live; the coverage table says so.
+Python 3.10+, standard library only. One core, adapters for Claude Code, Codex CLI, Kimi Code, grok, and Cursor. Kimi has not been probed live; the coverage table says so. Cursor's contract and what a cloud agent actually ran are in [`docs/cursor.md`](docs/cursor.md).
 
 The comments guard is the reason this repo exists. A Claude Code hook on `Write|Edit` saw **1 of 116** file writes in a measured session. The other 115 arrived as shell heredocs. A hook that reports no violations because it never saw the writes is not a hook.
 
@@ -43,11 +43,18 @@ it. See [`docs/harnesses.md`](docs/harnesses.md).
 grok loads Claude settings hooks unchanged but sends **camelCase**: an unported Claude hook parses
 nothing and fails open. A live control hook read zero commands while ours denied the same call.
 
+Cursor cloud agents load `.cursor/hooks.json` and, in the VM this was captured on, also
+`.claude/settings.json`. The Claude file is rewritten onto Cursor events but the script still
+sees `tool_name: "Shell"`. The hookjson adapter allow-exits that payload. `adapters/cursor/`
+denies it. `~/.cursor/hooks.json` did not fire. Details and the guard map are in
+[`docs/cursor.md`](docs/cursor.md).
+
 ## Install
 
 ```sh
 ./install.sh --harness claude-code --target ~/.claude/settings.json --force
 # or from monorepo root: ../../install.sh --harness claude-code --target ~/.claude/settings.json --force
+./install.sh --harness cursor --target .cursor/hooks.json --force
 ```
 
 
@@ -56,7 +63,7 @@ adapters/hookjson/install.sh --harness codex
 adapters/hookjson/install.sh --harness codex --target .codex/hooks.json
 ```
 
-Harnesses: `claude-code`, `codex`, `kimi`, `grok`. No `--target` prints the snippet; an existing
+Harnesses: `claude-code`, `codex`, `kimi`, `grok`, `cursor`. No `--target` prints the snippet; an existing
 file needs `--force`, which backs it up and replaces this pack's entries by script name. Python
 3.10+ is checked first and the checkout path is quoted. Adapt the `claude-code` MCP matcher to
 your server names.
