@@ -121,9 +121,9 @@ def terminator_in(text):
     return False
 
 
-def unquoted(text):
+def blank_citations(text):
     chars = list(text)
-    command = False
+    commands = []
     index = 0
     length = len(text)
     while index < length:
@@ -136,19 +136,30 @@ def unquoted(text):
             break
         inner = text[index + 1:end]
         if mark == "`" and inner.strip() and not terminator_in(inner):
-            command = True
+            commands.append((index, end + 1))
         for cursor in range(index, end + 1):
             chars[cursor] = " "
         index = end + 1
-    return "".join(chars), command
+    return "".join(chars), commands
+
+
+def covers(commands, start, end):
+    for command_start, command_end in commands:
+        if command_start < end and command_end > start:
+            return True
+    return False
 
 
 def vague_clause(text):
-    for sentence in re.split(r"[.!?\n]+", (text or "").lower()):
-        plain, command = unquoted(sentence)
-        exempt = command or bool(CHECKABLE.search(plain) or CAP.search(plain))
+    plain, commands = blank_citations((text or "").lower())
+    for match in re.finditer(r"[^.!?\n]+", plain):
+        sentence = match.group()
+        start, end = match.span()
+        exempt = covers(commands, start, end) or bool(
+            CHECKABLE.search(sentence) or CAP.search(sentence)
+        )
         for needles, kind in UNBOUNDED_TERMINATORS:
-            if not ordered_in(plain, needles):
+            if not ordered_in(sentence, needles):
                 continue
             if needles[0] == "until" and exempt:
                 continue

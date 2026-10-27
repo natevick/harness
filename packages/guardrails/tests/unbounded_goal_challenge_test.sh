@@ -111,6 +111,12 @@ check fire "a cited cap is not a cap" \
   'loop until clean, and the note says "max 5 rounds"'
 check fire "a cited command is not the instruction" \
   'loop until clean, as in "loop until `npm test` has zero failures"'
+check silent "period inside a quoted example" \
+  'Fix the guard so "loop until clean. still warns" is quoted'
+check fire "period inside a cited cap" \
+  'loop until clean, he said "max 5 rounds. then stop"'
+check fire "a later command does not cover an earlier sentence" \
+  'loop until clean. Then run `npm test`.'
 
 echo "── a bare unbounded finish still warns ──"
 check fire "loop until clean" "loop until clean"

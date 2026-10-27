@@ -131,8 +131,10 @@ The prompt gate warns on that shape. It does not block the submit. On 2026-10-27
 scan treated a bounded goal as that shape: "until" followed by "zero" fired on "loop until
 `npm test` has zero failures, max 5 rounds" and on "loop until zero failing tests", and a
 task that quoted "loop until clean" as an example was read as the instruction. Citations in
-double quotes or backticks are no longer scanned. An until-clause outside a citation stands
-only when that sentence has no checkable outcome and no cap. Checkable is a backtick
+double quotes or backticks are removed before the sentence split, so a period inside
+a citation is not a sentence break and cannot hide a cap or leak a quoted until-clause.
+An until-clause outside a citation stands only when that sentence has no checkable
+outcome and no cap. Checkable is a backtick
 command, test, CI, build, lint, exit status, or a failure count. A cap is "max N" rounds,
 iterations, or attempts, a time or token budget, or a number of minutes, hours, or tokens.
 "until clean", "until nothing", "until no more findings", "until you're satisfied",
