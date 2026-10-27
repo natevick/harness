@@ -402,19 +402,41 @@ json.dump({
     }],
 }, open(os.path.join(repo, "done-means.sabotage.json"), "w"))
 PY
-setsid python3 "$CLI" run "$HOLD" >"$TMP/hold-out" 2>"$TMP/hold-err" </dev/null &
-hold_pid=$!
+hold_pid=$(python3 - "$CLI" "$HOLD" "$TMP/hold-out" "$TMP/hold-err" <<'PY'
+import subprocess, sys
+cli, hold, out_path, err_path = sys.argv[1:]
+proc = subprocess.Popen(
+    [sys.executable, cli, "run", hold],
+    stdin=subprocess.DEVNULL,
+    stdout=open(out_path, "w"),
+    stderr=open(err_path, "w"),
+    start_new_session=True,
+)
+print(proc.pid)
+PY
+)
 arrived=0
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 20 25 30; do
+deadline=$((SECONDS + 20))
+while [ "$SECONDS" -lt "$deadline" ]; do
   if [ -f "$MARK" ]; then arrived=1; break; fi
   sleep 0.2
 done
-kill -9 -"$hold_pid" 2>/dev/null || kill -9 "$hold_pid" 2>/dev/null || true
-wait "$hold_pid" 2>/dev/null || true
-if [ "$arrived" -eq 1 ] && [ "$(cat "$HOLD/src/value.txt")" = "2" ]; then
+if [ -n "$hold_pid" ]; then
+  kill -9 -"$hold_pid" 2>/dev/null || kill -9 "$hold_pid" 2>/dev/null || true
+fi
+dead=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if [ -z "$hold_pid" ] || ! kill -0 "$hold_pid" 2>/dev/null; then dead=1; break; fi
+  state=$(ps -o state= -p "$hold_pid" 2>/dev/null | tr -d '[:space:]')
+  case "$state" in
+    Z*) dead=1; break ;;
+  esac
+  sleep 0.1
+done
+if [ "$arrived" -eq 1 ] && [ "$dead" -eq 1 ] && [ "$(cat "$HOLD/src/value.txt")" = "2" ]; then
   ok "killing the red run leaves the live tree"
 else
-  bad "kill safety arrived=$arrived value=$(cat "$HOLD/src/value.txt" 2>/dev/null) out=$(cat "$TMP/hold-out" 2>/dev/null) err=$(cat "$TMP/hold-err" 2>/dev/null)"
+  bad "kill safety arrived=$arrived dead=$dead value=$(cat "$HOLD/src/value.txt" 2>/dev/null) out=$(cat "$TMP/hold-out" 2>/dev/null) err=$(cat "$TMP/hold-err" 2>/dev/null)"
 fi
 
 echo
