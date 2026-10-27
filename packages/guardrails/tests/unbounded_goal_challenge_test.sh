@@ -91,6 +91,37 @@ check silent "implement dark mode names an outcome" "Implement dark mode"
 check silent "until does not pair with a later paragraph" \
   "$(printf '%s\n' 'Implement the parser.' '' 'Leave it until the design is settled.' 'NOTHING gets posted.')"
 
+echo "── a bounded until-clause is not an unbounded finish ──"
+check silent "npm test zero failures, max 5 rounds" \
+  'loop until `npm test` has zero failures, max 5 rounds'
+check silent "zero failing tests" "loop until zero failing tests"
+check silent "zero failures" "loop until zero failures"
+check silent "backtick command is clean" 'loop until `npm test` is clean'
+check silent "build is clean" "loop until the build is clean"
+check silent "cap on an until-clause" "loop until clean, max 5 rounds"
+check silent "cap on a subjective until-clause" "loop until you're satisfied, max 5 rounds"
+check silent "time budget" "loop until clean, time budget"
+check silent "double-quoted examples" \
+  'Fix the guard so "loop until clean" still warns but "loop until `npm test` has zero failures, max 5 rounds" passes'
+check silent "backtick-quoted example" \
+  'Fix the guard so `loop until clean` still warns'
+check fire "quoted example plus a bare until clean" \
+  'Fix the guard so "loop until clean" still warns, then loop until clean'
+check fire "a cited cap is not a cap" \
+  'loop until clean, and the note says "max 5 rounds"'
+check fire "a cited command is not the instruction" \
+  'loop until clean, as in "loop until `npm test` has zero failures"'
+
+echo "── a bare unbounded finish still warns ──"
+check fire "loop until clean" "loop until clean"
+check fire "panel returns no findings" "keep going until the panel returns no findings"
+check fire "repeat forever" "repeat forever"
+check fire "loop until nothing" "loop until nothing"
+check fire "until no more findings" "loop until no more findings"
+check fire "until you're satisfied" "loop until you're satisfied"
+check fire "keep going indefinitely" "keep going indefinitely"
+check fire "forever keeps its warning beside a cap" "repeat forever, max 5 rounds"
+
 echo "── broken input must never take the turn down ──"
 survives() {
   local name="$1" stdin="$2"

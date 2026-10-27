@@ -19,7 +19,7 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 | `brevity` | a reply over the prose-word budget | nudge at next prompt; deny at stop past 2x |
 | `commitment` | "I'll do X" with no cron, task, file, PR or explicit downgrade | deny at stop |
 | `truncation` | a command whose output landed exactly on its own `head -n` cap | warn |
-| `goals` | an unbounded finish, a missing done-means spec, or a done claim whose checks fail | warn at prompt-submit; block on the edit and at stop |
+| `goals` | an unbounded finish (a cited, checkable, or capped until-clause is not one), a missing done-means spec, or a done claim whose checks fail | warn at prompt-submit; block on the edit and at stop |
 | `delegation` | 30 consecutive shell calls with no subagent | warn |
 
 Done-means, including what is enforced and what is only recorded, is [`docs/done-means.md`](docs/done-means.md).

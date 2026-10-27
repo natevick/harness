@@ -27,6 +27,7 @@ UNBOUNDED_TERMINATORS = (
     (("until", "zero"), EXHAUSTION),
     (("until", "no new"), EXHAUSTION),
     (("until", "no further"), EXHAUSTION),
+    (("until", "no findings"), EXHAUSTION),
     (("until", "empty"), EXHAUSTION),
     (("until", "clean"), EXHAUSTION),
     (("until", "you are satisfied"), SUBJECTIVE),
@@ -37,6 +38,20 @@ UNBOUNDED_TERMINATORS = (
     (("continuously",), OPEN_ENDED),
     (("non-stop",), OPEN_ENDED),
     (("nonstop",), OPEN_ENDED),
+)
+
+CHECKABLE = re.compile(
+    r"\b(?:tests?|ci|builds?|lint|exits?|status)\b"
+    r"|\b(?:zero|\d+)\s+failures?\b"
+    r"|\b(?:zero|\d+)\s+failing\s+tests?\b",
+    re.I,
+)
+
+CAP = re.compile(
+    r"\bmax(?:imum)?\s+\d+\s+(?:rounds?|iterations?|attempts?)\b"
+    r"|\b(?:time|token)\s+budget\b"
+    r"|\b\d+\s+(?:minutes?|hours?|seconds?|tokens?)\b",
+    re.I,
 )
 
 MEASURABLE = re.compile(
@@ -99,16 +114,44 @@ def ordered_in(text, needles):
     return True
 
 
-def ordered(text, needles):
-    for sentence in re.split(r"[.!?\n]+", (text or "").lower()):
-        if ordered_in(sentence, needles):
+def terminator_in(text):
+    for needles, _kind in UNBOUNDED_TERMINATORS:
+        if ordered_in(text, needles):
             return True
     return False
 
 
+def unquoted(text):
+    chars = list(text)
+    command = False
+    index = 0
+    length = len(text)
+    while index < length:
+        mark = text[index]
+        if mark not in "`\"":
+            index += 1
+            continue
+        end = text.find(mark, index + 1)
+        if end < 0:
+            break
+        inner = text[index + 1:end]
+        if mark == "`" and inner.strip() and not terminator_in(inner):
+            command = True
+        for cursor in range(index, end + 1):
+            chars[cursor] = " "
+        index = end + 1
+    return "".join(chars), command
+
+
 def vague_clause(text):
-    for needles, kind in UNBOUNDED_TERMINATORS:
-        if ordered(text, needles):
+    for sentence in re.split(r"[.!?\n]+", (text or "").lower()):
+        plain, command = unquoted(sentence)
+        exempt = command or bool(CHECKABLE.search(plain) or CAP.search(plain))
+        for needles, kind in UNBOUNDED_TERMINATORS:
+            if not ordered_in(plain, needles):
+                continue
+            if needles[0] == "until" and exempt:
+                continue
             return kind
     return None
 
