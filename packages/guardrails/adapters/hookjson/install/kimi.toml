@@ -29,6 +29,12 @@ command = "python3 {{GUARDRAILS}}/adapters/hookjson/delegation_nudge.py"
 timeout = 10
 
 [[hooks]]
+event = "PreToolUse"
+matcher = "Write|Edit|MultiEdit|Bash"
+command = "python3 {{GUARDRAILS}}/adapters/hookjson/done_means_guard.py"
+timeout = 10
+
+[[hooks]]
 event = "UserPromptSubmit"
 matcher = ""
 command = "python3 {{GUARDRAILS}}/adapters/hookjson/unbounded_goal_challenge.py"

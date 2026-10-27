@@ -9,7 +9,7 @@ def main():
     event = hookio.read("UserPromptSubmit")
     if event is None:
         return 0
-    return hookio.decide(event, "goals", goals.check_prompt(event.prompt))
+    return hookio.decide(event, "goals", goals.check_prompt(event.prompt, event.session))
 
 
 if __name__ == "__main__":

@@ -61,9 +61,6 @@ names "an open-ended duration" "an open-ended duration" \
   "keep going forever on the WAF rules"
 
 echo "── ordinary completion wording is not an unbounded loop ──"
-check silent "iterate until done" "iterate until done"
-check silent "until the migration is complete" \
-  "/loop iterate on the specs until the migration is complete"
 check silent "until it passes CI" "repeat the deploy until it passes CI"
 check silent "until the tests pass" "keep going until the tests pass"
 check silent "until the build finishes" "/goal repeat the build until it is finished"

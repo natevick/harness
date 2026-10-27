@@ -132,7 +132,10 @@ can actually enforce the verdict.
 | `delegation` count | `preToolUse` `Shell` | Warn channel verified. Not counted on `beforeShellExecution`: both events fire for one call and would double the counter. |
 | `delegation` reset | `subagentStart`, and `preToolUse` `Task` | Daemon. Not fired live. |
 | `truncation` warn | `postToolUse` `Shell` | Live channel. The output string is parsed out of the JSON `tool_output`. `afterShellExecution` accepts any object and does not inject `additional_context`. |
-| `goals`, brevity streak | `beforeSubmitPrompt` | Daemon plus docs. Not fired live. Warn is `additional_context` with `continue: true`. It does not block the prompt. |
+| `goals` vague prompt | `beforeSubmitPrompt` | Docs: `continue: false` blocks the submit. Not fired live in the 2026-10-21 probe. |
+| `goals` edit | `preToolUse` `Write`/`Shell` and `beforeShellExecution` | Same deny path as `pipes` for a shell write the parser can see. `Write` deny was live for the comments guard. |
+| `goals` done claim | `stop` `followup_message` | Same re-prompt as `commitment`, capped by `loop_limit`. The hook re-runs sabotage and can be killed at 30s. |
+| brevity streak | `beforeSubmitPrompt` | Daemon plus docs. Not fired live. Warn is `additional_context` with `continue: true`. It does not block the prompt. |
 | `brevity`, `commitment` | `stop` `followup_message` | The re-prompt field is in the daemon. The live stop payload has no assistant text and `transcript_path` was null. `afterAgentResponse` `text` is stashed for the stop hook. That event is supported in cloud agents and did not fire during the tool probes. |
 
 `beforeShellExecution` and `preToolUse` both run for one shell call, `preToolUse` first. A deny

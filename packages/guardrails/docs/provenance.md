@@ -127,10 +127,11 @@ words afterwards: "I should have given a stronger bounded end."
 The failure is structural, not a lapse: on any adversarial process (review panels, fuzzing,
 red-teaming, "find all the bugs"), "until it returns nothing" has no reachable end state.
 
-This guard blocks nothing. It injects a note so the model raises the bound *before* starting,
-rather than discovering the trap several hours in. On 2026-09-02 it false-fired on a
-machine-generated task notification whose own text said "do not loop on it forever", which is why
-machine-generated prompt prefixes are excluded.
+The prompt gate now denies that shape instead of only injecting a note, and the same guard
+requires a `done-means.json` before an edit and a passing `run` before a done claim. Sabotage
+re-checks a changed test by reverting the non-test diff: a record that says the test went red
+is rejected when the revert still passes. What is checked and what is only recorded is in
+[`done-means.md`](done-means.md). Machine-generated prompt prefixes stay excluded.
 
 ## delegation — grinding instead of orchestrating
 

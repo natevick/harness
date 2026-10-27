@@ -253,6 +253,12 @@ def allow(event):
 
 
 def decide(event, guard, verdict):
+    if verdict.decision == DENY and event.name == "beforesubmitprompt":
+        log_decision(event, guard, verdict)
+        sys.stderr.write(verdict.reason + "\n")
+        emit({"continue": False, "user_message": verdict.reason})
+        return 0
+
     if verdict.decision == DENY and event.can_followup:
         if not event.follow_up_ok:
             return 0

@@ -144,15 +144,15 @@ sys.exit(0 if "capped output at 3" in d.get("additional_context","") and "permis
 else bad "truncation shape: $(cat "$TMP/out")"; fi
 
 echo
-echo "── PROMPT WARN DOES NOT BLOCK THE SUBMIT ──"
+echo "── A VAGUE GOAL BLOCKS beforeSubmitPrompt ──"
 PROMPT='{"hook_event_name":"beforeSubmitPrompt","session_id":"s1",
   "prompt":"keep going until it returns nothing","attachments":[]}'
 fire unbounded_goal_challenge.py "$(json "$PROMPT")"
 if python3 -c '
 import json,sys
 d=json.load(open(sys.argv[1]))
-sys.exit(0 if d.get("continue") is True and "UNBOUNDED-WORK" in d.get("additional_context","") and d.get("permission")!="deny" else 1)
-' "$TMP/out"; then ok "goals warn is additional_context and continue true"
+sys.exit(0 if d.get("continue") is False and "UNBOUNDED-WORK" in d.get("user_message","") and "additional_context" not in d else 1)
+' "$TMP/out"; then ok "vague goal is continue false"
 else bad "goals shape: $(cat "$TMP/out")"; fi
 
 echo

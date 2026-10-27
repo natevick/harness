@@ -75,11 +75,13 @@ read the same output shape. Set `GUARDRAILS_HARNESS=codex` if you want the log t
 The templates in `adapters/hookjson/install/` leave out hooks that the harness cannot act on,
 rather than registering a guard that can never fire:
 
-- **grok**: no `UserPromptSubmit` (grok ignores its stdout and exit code) and no `PostToolUse`
+- **grok**: no `UserPromptSubmit` (grok ignores its stdout and exit code), so the done-means
+  prompt gate is not registered there. The edit gate and the stop gate are. No `PostToolUse`
   (passive in 1.0.5).
 - **Kimi**: deny travels as `hookSpecificOutput` with exit 0, the spelling Kimi documents, with the
   reason on stderr as a fallback. No `PostToolUse` (fire-and-forget, cannot warn) and no `Stop` (the payload carries no
-  assistant text, so the brevity and commitment guards have nothing to read). If you register the
+  assistant text, so the brevity, commitment, and done-means stop guards have nothing to read). The
+  done-means edit gate is registered on `PreToolUse`. If you register the
   Stop guards anyway, they exit 0 and write one `harness sent no assistant text` line to
   `decisions.jsonl` per session, so the gap is visible rather than silent.
 

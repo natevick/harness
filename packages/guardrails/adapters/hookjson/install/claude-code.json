@@ -48,6 +48,16 @@
         ]
       },
       {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/done_means_guard.py",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Agent|Workflow|SendMessage",
         "hooks": [
           {
@@ -79,6 +89,11 @@
           {
             "type": "command",
             "command": "python3 {{GUARDRAILS}}/adapters/hookjson/commitment_guard.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 {{GUARDRAILS}}/adapters/hookjson/done_means_guard.py",
+            "timeout": 30
           }
         ]
       }

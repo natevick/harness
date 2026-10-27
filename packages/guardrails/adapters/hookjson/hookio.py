@@ -244,6 +244,9 @@ def decide(event, guard, verdict):
 
     if verdict.decision == DENY:
         sys.stderr.write(verdict.reason + "\n")
+        if event.name == "userpromptsubmit" and event.harness not in GROK_SHAPE:
+            print(json.dumps({"decision": "block", "reason": verdict.reason}))
+            return 0
         if event.name == "stop":
             return 2
         if event.harness in GROK_SHAPE:
