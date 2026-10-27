@@ -1,4 +1,9 @@
-from . import PASS, warn
+import os
+import re
+
+from . import PASS, deny, state_dir, warn
+from .comments import bash_units, patch_units, resolve
+from .commitment import prose
 
 MACHINE_PREFIXES = (
     "<task-notification",
@@ -34,6 +39,27 @@ UNBOUNDED_TERMINATORS = (
     (("nonstop",), OPEN_ENDED),
 )
 
+MEASURABLE = re.compile(
+    r"\b(?:tests?|pass(?:es|ed|ing)?|fails?|ci|build|exits?|status|lint)\b"
+    r"|\b\d+\b"
+    r"|`[^`]+`"
+    r"|\b[\w./-]+\.[A-Za-z0-9]+\b",
+    re.I,
+)
+
+WORK = re.compile(
+    r"^(?:please\s+)?(?:implement|add|fix|build|create|refactor|ship|write|"
+    r"update|change|remove|delete|make|finish|complete|introduce|port|migrate|loop)\b",
+    re.I,
+)
+
+DONE_CLAIM = re.compile(
+    r"(?:^|\n)\s*done[.!]?\s*(?:\n|$)"
+    r"|\b(?:this is done|task is done|work is done|ready for review|ready to merge|"
+    r"all checks pass|i am done|i(?:'|’)m done)\b",
+    re.I,
+)
+
 NOTE = """<system-reminder>
 UNBOUNDED-WORK GATE
 
@@ -63,7 +89,7 @@ costs one exchange. Not raising it has cost a full session.
 </system-reminder>"""
 
 
-def ordered(text, needles):
+def ordered_in(text, needles):
     position = 0
     for needle in needles:
         found = text.find(needle, position)
@@ -73,16 +99,117 @@ def ordered(text, needles):
     return True
 
 
-def check_prompt(prompt):
-    prompt = (prompt or "").lstrip()
-    if not prompt or prompt.startswith(MACHINE_PREFIXES):
-        return PASS
+def ordered(text, needles):
+    for sentence in re.split(r"[.!?\n]+", (text or "").lower()):
+        if ordered_in(sentence, needles):
+            return True
+    return False
 
-    lower = prompt.lower()
-    if not any(marker in lower for marker in AUTONOMY_MARKERS):
-        return PASS
 
+def vague_clause(text):
     for needles, kind in UNBOUNDED_TERMINATORS:
-        if ordered(lower, needles):
-            return warn(NOTE.format(kind=kind))
+        if ordered(text, needles):
+            return kind
+    return None
+
+
+def vague_prompt(text):
+    found = vague_clause(text)
+    if found:
+        return found
+    if not MEASURABLE.search(text or ""):
+        return "no observable end state"
+    return None
+
+
+def has_marker(text):
+    lower = (text or "").lower()
+    for marker in AUTONOMY_MARKERS:
+        if marker.startswith("/"):
+            if marker in lower:
+                return True
+            continue
+        if re.search(r"(?<!\w)%s(?!\w)" % re.escape(marker), lower):
+            return True
+    return False
+
+
+def is_task(prompt):
+    text = (prompt or "").lstrip()
+    if not text or text.startswith(MACHINE_PREFIXES):
+        return False
+    if has_marker(text):
+        return True
+    return bool(WORK.match(text))
+
+
+def task_marker(session):
+    key = re.sub(r"[^A-Za-z0-9_-]", "", str(session or ""))[:64] or "unknown"
+    return os.path.join(state_dir(), "done-task-%s" % key)
+
+
+def note_task(session):
+    try:
+        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
+        with open(task_marker(session), "w") as handle:
+            handle.write("1")
+    except OSError:
+        return
+
+
+def task_open(session):
+    return os.path.exists(task_marker(session))
+
+
+def shell_paths(command, cwd):
+    writes, patches = bash_units(command or "")
+    paths = [resolve(target, cwd or "") for target, _text, _append in writes]
+    for patch in patches:
+        paths.extend(unit[0] for unit in patch_units(patch, cwd))
+    return paths
+
+
+def claims_done(text):
+    return bool(DONE_CLAIM.search(prose(text or "")))
+
+
+def check_prompt(prompt, session=""):
+    prompt = (prompt or "").lstrip()
+    if not is_task(prompt):
+        return PASS
+    note_task(session)
+    reason = vague_prompt(prompt)
+    if reason in (EXHAUSTION, SUBJECTIVE, OPEN_ENDED):
+        return warn(NOTE.format(kind=reason))
+    return PASS
+
+
+def engaged(cwd, session):
+    from . import done
+
+    return task_open(session) or os.path.isfile(done.locate(cwd))
+
+
+def check_start(cwd, session, paths):
+    from . import done
+
+    if done.stood_down() or not engaged(cwd, session):
+        return PASS
+    spec = done.locate(cwd)
+    if paths and all(done.allowed_write(cwd, path) for path in paths):
+        return PASS
+    problems, _data = done.start_problems(cwd, spec)
+    if problems:
+        return deny(done.format_block(problems))
+    return PASS
+
+
+def check_stop(text, cwd, session=""):
+    from . import done
+
+    if done.stood_down() or not claims_done(text) or not engaged(cwd, session):
+        return PASS
+    problems, _data = done.finish_problems(cwd)
+    if problems:
+        return deny(done.format_block(problems))
     return PASS

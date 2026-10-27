@@ -21,6 +21,11 @@
         "command": "python3 {{GUARDRAILS}}/adapters/cursor/comment_discipline_guard.py",
         "timeout": 10,
         "failClosed": true
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/done_means_guard.py",
+        "timeout": 10,
+        "failClosed": true
       }
     ],
     "preToolUse": [
@@ -52,6 +57,12 @@
         "command": "python3 {{GUARDRAILS}}/adapters/cursor/delegation_nudge.py",
         "matcher": "Shell|Task",
         "timeout": 10
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/done_means_guard.py",
+        "matcher": "Write|Shell",
+        "timeout": 10,
+        "failClosed": true
       }
     ],
     "postToolUse": [
@@ -91,6 +102,11 @@
       },
       {
         "command": "python3 {{GUARDRAILS}}/adapters/cursor/commitment_guard.py",
+        "timeout": 30,
+        "loop_limit": 5
+      },
+      {
+        "command": "python3 {{GUARDRAILS}}/adapters/cursor/done_means_guard.py",
         "timeout": 30,
         "loop_limit": 5
       }

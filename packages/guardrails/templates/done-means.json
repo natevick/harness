@@ -1,0 +1,18 @@
+{
+  "task": "REPLACE",
+  "done": "REPLACE with an observable end state, such as test/tax.test.js exits 0",
+  "checks": [
+    {
+      "id": "unit",
+      "run": "REPLACE with a command that must exit 0",
+      "sabotage": true
+    }
+  ],
+  "paths": {
+    "must_change": [],
+    "must_not_change": []
+  },
+  "human": [
+    "UNENFORCED: judgment a command cannot make. This list is never a pass or a fail."
+  ]
+}

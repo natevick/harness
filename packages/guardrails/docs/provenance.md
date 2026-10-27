@@ -127,10 +127,12 @@ words afterwards: "I should have given a stronger bounded end."
 The failure is structural, not a lapse: on any adversarial process (review panels, fuzzing,
 red-teaming, "find all the bugs"), "until it returns nothing" has no reachable end state.
 
-This guard blocks nothing. It injects a note so the model raises the bound *before* starting,
-rather than discovering the trap several hours in. On 2026-09-02 it false-fired on a
-machine-generated task notification whose own text said "do not loop on it forever", which is why
-machine-generated prompt prefixes are excluded.
+The prompt gate warns on that shape. It does not block the submit. The edit gate is the
+enforcement: a `done-means.json` with a concrete `done` sentence and a passing review bound to
+the spec hash, before any other edit. A done claim re-runs the checks and reverts the non-test
+diff in a temporary worktree: the checks must fail there and pass after the diff is put back.
+What is checked and what is only recorded is in [`done-means.md`](done-means.md).
+Machine-generated prompt prefixes stay excluded.
 
 ## delegation — grinding instead of orchestrating
 

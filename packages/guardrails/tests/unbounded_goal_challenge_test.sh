@@ -85,6 +85,11 @@ check silent "a plain question" "what is the behind-count on the checkout servic
 check silent "an empty prompt" ""
 check silent "an unbounded phrase with no autonomous work" \
   "the incident ran until nothing was left of the cache"
+check silent "repeat inside repeated is not a marker" \
+  "The numbers were repeated in the log."
+check silent "implement dark mode names an outcome" "Implement dark mode"
+check silent "until does not pair with a later paragraph" \
+  "$(printf '%s\n' 'Implement the parser.' '' 'Leave it until the design is settled.' 'NOTHING gets posted.')"
 
 echo "── broken input must never take the turn down ──"
 survives() {

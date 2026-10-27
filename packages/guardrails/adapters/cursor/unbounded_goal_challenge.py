@@ -11,7 +11,7 @@ def main():
         return 1
     if event.name != "beforesubmitprompt":
         return cursorio.allow(event)
-    return cursorio.decide(event, "goals", goals.check_prompt(event.prompt))
+    return cursorio.decide(event, "goals", goals.check_prompt(event.prompt, event.session))
 
 
 if __name__ == "__main__":
