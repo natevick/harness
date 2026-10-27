@@ -147,7 +147,7 @@ sys.exit(0 if d.get("permission")=="deny" and "review failed" in d.get("agent_me
 ' "$TMP/out" && ok "a failing review blocks the edit" || bad "review fail: $(cat "$TMP/out")"
 
 write_review "$REPO/done-means.json" pass
-python3 -c 'open(sys.argv[1],"a").write("\n")' "$REPO/done-means.json"
+python3 -c 'import sys; open(sys.argv[1],"a").write("\n")' "$REPO/done-means.json"
 cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"preToolUse","tool_name":"Write","session_id":"clear","cwd":sys.argv[1],"tool_input":{"file_path":sys.argv[1]+"/src/a.py","content":"x = 1\n"}}))' "$REPO")"
 python3 -c '
 import json,sys

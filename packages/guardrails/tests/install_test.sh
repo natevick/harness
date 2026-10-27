@@ -106,10 +106,10 @@ fi
 if python3 -c '
 import collections, json, sys
 config = json.load(open(sys.argv[1]))
-scripts = [h["command"].rsplit("/", 1)[-1]
-           for groups in config["hooks"].values() for g in groups for h in g["hooks"]]
-counts = collections.Counter(scripts)
-sys.exit(0 if scripts and max(counts.values()) == 1 else 1)
+per_event = [[h["command"].rsplit("/", 1)[-1] for g in groups for h in g["hooks"]]
+             for groups in config["hooks"].values()]
+unique = all(scripts and max(collections.Counter(scripts).values()) == 1 for scripts in per_event)
+sys.exit(0 if per_event and unique else 1)
 ' "$TMP/existing.json"; then
   ok "a second install leaves exactly one copy of each guard"
 else
@@ -133,9 +133,11 @@ import collections, json, sys
 config = json.load(open(sys.argv[1]))
 commands = [h["command"] for groups in config["hooks"].values()
             for g in groups for h in g["hooks"]]
-scripts = [c.rsplit("/", 1)[-1] for c in commands]
 stale = [c for c in commands if "/somewhere/else" in c]
-sys.exit(0 if not stale and max(collections.Counter(scripts).values()) == 1 else 1)
+per_event = [[h["command"].rsplit("/", 1)[-1] for g in groups for h in g["hooks"]]
+             for groups in config["hooks"].values()]
+unique = all(scripts and max(collections.Counter(scripts).values()) == 1 for scripts in per_event)
+sys.exit(0 if commands and not stale and unique else 1)
 ' "$TMP/existing.json"; then
   ok "entries from the old path are replaced, not duplicated"
 else
@@ -167,7 +169,7 @@ for odd in "sp ace" 'qu"ote'; do
     bad "root '$odd' did not deny"
   fi
   if "$copy/adapters/hookjson/install.sh" --harness kimi \
-    | python3 -c 'import sys, tomllib; sys.exit(0 if len(tomllib.loads(sys.stdin.read())["hooks"]) == 7 else 1)'; then
+    | python3 -c 'import sys, tomllib; sys.exit(0 if len(tomllib.loads(sys.stdin.read())["hooks"]) == 8 else 1)'; then
     ok "a root named '$odd' round-trips through the kimi TOML parser"
   else
     bad "root '$odd' produced TOML that does not parse"
@@ -211,13 +213,13 @@ else
   bad "the nested target was not created"
 fi
 "$INSTALL" --harness kimi --target "$TMP/kimi-config.toml" >/dev/null 2>&1
-if grep -c '^\[\[hooks\]\]' "$TMP/kimi-config.toml" | grep -qx 7; then
-  ok "kimi appends all seven hook blocks"
+if grep -c '^\[\[hooks\]\]' "$TMP/kimi-config.toml" | grep -qx 8; then
+  ok "kimi appends all eight hook blocks"
 else
   bad "kimi wrote $(grep -c '^\[\[hooks\]\]' "$TMP/kimi-config.toml") blocks"
 fi
 "$INSTALL" --harness kimi --target "$TMP/kimi-config.toml" --force >/dev/null 2>&1
-if grep -c '^\[\[hooks\]\]' "$TMP/kimi-config.toml" | grep -qx 7; then
+if grep -c '^\[\[hooks\]\]' "$TMP/kimi-config.toml" | grep -qx 8; then
   ok "a second kimi install does not duplicate them"
 else
   bad "kimi duplicated blocks on re-install"
