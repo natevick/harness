@@ -76,7 +76,7 @@ The templates in `adapters/hookjson/install/` leave out hooks that the harness c
 rather than registering a guard that can never fire:
 
 - **grok**: no `UserPromptSubmit` (grok ignores its stdout and exit code), so the done-means
-  prompt gate is not registered there. The edit gate and the stop gate are. No `PostToolUse`
+  prompt warning is not registered there. The edit gate and the stop gate are. No `PostToolUse`
   (passive in 1.0.5).
 - **Kimi**: deny travels as `hookSpecificOutput` with exit 0, the spelling Kimi documents, with the
   reason on stderr as a fallback. No `PostToolUse` (fire-and-forget, cannot warn) and no `Stop` (the payload carries no

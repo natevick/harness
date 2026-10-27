@@ -5,7 +5,6 @@
     {
       "id": "unit",
       "run": "REPLACE with a command that must exit 0",
-      "fail_first": false,
       "sabotage": true
     }
   ],
@@ -13,7 +12,6 @@
     "must_change": [],
     "must_not_change": []
   },
-  "ci": [],
   "human": [
     "UNENFORCED: judgment a command cannot make. This list is never a pass or a fail."
   ]

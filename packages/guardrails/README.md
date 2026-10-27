@@ -19,7 +19,7 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 | `brevity` | a reply over the prose-word budget | nudge at next prompt; deny at stop past 2x |
 | `commitment` | "I'll do X" with no cron, task, file, PR or explicit downgrade | deny at stop |
 | `truncation` | a command whose output landed exactly on its own `head -n` cap | warn |
-| `goals` | a vague finish, a missing done-means spec, or a done claim whose checks fail | block at prompt-submit, on the edit, and at stop |
+| `goals` | an unbounded finish, a missing done-means spec, or a done claim whose checks fail | warn at prompt-submit; block on the edit and at stop |
 | `delegation` | 30 consecutive shell calls with no subagent | warn |
 
 Done-means, including what is enforced and what is only recorded, is [`docs/done-means.md`](docs/done-means.md).
@@ -39,7 +39,7 @@ it. See [`docs/harnesses.md`](docs/harnesses.md).
 | `brevity` | enforced (doc) | enforced (doc) | **silent** — no stop text | enforced (doc) |
 | `commitment` | enforced (doc) | enforced (doc) | **silent** — no stop text | enforced (doc) |
 | `truncation` | warns (doc) | warns (doc) | **silent** — fire-and-forget | **silent** — passive in 1.0.5 |
-| `goals` | blocks (doc) | blocks (doc) | blocks on edits (doc); prompt unverified | edits block (doc); prompt **silent** |
+| `goals` | edit and stop block (doc); prompt warns | edit and stop block (doc); prompt warns | blocks on edits (doc); prompt unverified | edits block (doc); prompt **silent** |
 | `delegation` | warns (doc) | warns (doc) | unverified | **silent** — no warn channel |
 
 grok loads Claude settings hooks unchanged but sends **camelCase**: an unported Claude hook parses
@@ -106,7 +106,7 @@ pass/fail summary — a suite that reports nothing because it ran nothing.
 | `GUARDRAILS_COMMAND_WRAPPERS` | empty | wrapper commands to look through before `gh`/`git` |
 | `GUARDRAILS_NOTIFY_COMMANDS` | empty | commands whose `--notify` text is budgeted |
 | `GUARDRAILS_DONE_MEANS` | `done-means.json` in the work tree | `off` stands the gate down; any other value is the spec path |
-| `GUARDRAILS_DONE_BASE` | `origin/main`, else `main`, else `HEAD` | git rev for path and sabotage diffs |
+| `GUARDRAILS_DONE_BASE` | `origin/main`, else `main`, else `HEAD` | git rev for path diffs and the revert |
 
 `decisions.jsonl` stores a truncated SHA-256 of the command, not the command; state files are 0600
 in a 0700 directory. Shell writes needing expansion are out of scope — see

@@ -38,10 +38,10 @@ shape with its own exit code. Field-by-field differences are in
 | post-shell (command finished) | `truncation.check_output(command, stdout)` | `warn` is advisory context |
 | stop (turn is ending) | `brevity.evaluate(text, session, source, uuid)` | `deny` should re-prompt the model |
 | | `commitment.check_reply(text)` | `deny` should re-prompt the model |
-| prompt-submit | `goals.check_prompt(prompt)` | `deny` blocks a vague task |
+| prompt-submit | `goals.check_prompt(prompt, session)` | `warn` on an unbounded finish; it does not deny |
 | | `brevity.streak_hint(session)` | `warn` is context prepended to the turn |
 | pre-edit (write, or a shell write) | `goals.check_start(cwd, session, paths)` | `deny` blocks until the done-means spec and review pass |
-| stop (turn is ending) | `goals.check_stop(text, cwd)` | `deny` re-prompts when a done claim's checks or sabotage fail |
+| stop (turn is ending) | `goals.check_stop(text, cwd, session)` | `deny` re-prompts when a done claim's checks fail or the revert does not go red |
 
 `deny` on a stop event means "the turn is not finished": the reason goes where the model will read
 it, and the harness hands control back to the model rather than to the user. `warn` never blocks.

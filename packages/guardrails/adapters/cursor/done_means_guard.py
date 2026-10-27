@@ -6,8 +6,6 @@ from guardrails import goals
 
 
 def paths_for(event):
-    if event.name == "stop":
-        return None
     if event.is_write:
         return [event.path] if event.path else []
     if event.is_shell:
@@ -26,7 +24,7 @@ def main():
         if source == "absent":
             cursorio.note_missing_stop_text(event, "goals")
             return 0
-        return cursorio.decide(event, "goals", goals.check_stop(text, event.cwd))
+        return cursorio.decide(event, "goals", goals.check_stop(text, event.cwd, event.session))
     paths = paths_for(event)
     if not paths:
         return cursorio.allow(event)

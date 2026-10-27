@@ -1,17 +1,20 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
-from datetime import datetime, timezone
+import tempfile
 from fnmatch import fnmatch
 from pathlib import Path
 
 from .goals import vague_clause, vague_prompt
 
-KEYS = {"task", "done", "checks", "paths", "ci", "human", "tests"}
-CHECK_KEYS = {"id", "run", "fail_first", "sabotage"}
+KEYS = {"task", "done", "checks", "paths", "human", "tests"}
+CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
+TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
+TEST_NAMES = ("test_*", "spec_*", "*_test", "*.test.*", "*.spec.*", "*_test.*", "*_spec.*")
 
 
 def stood_down():
@@ -31,28 +34,18 @@ def review_path(spec):
     return os.path.splitext(spec)[0] + ".review.json"
 
 
-def receipt_path(spec):
-    return os.path.splitext(spec)[0] + ".receipt.jsonl"
-
-
-def sabotage_path(spec):
-    return os.path.splitext(spec)[0] + ".sabotage.json"
-
-
 def package_root():
     return Path(__file__).resolve().parents[1]
 
 
+def meta_files(spec):
+    return [spec, review_path(spec)]
+
+
 def allowed_write(cwd, path):
     spec = os.path.abspath(locate(cwd))
-    allowed = {
-        os.path.normpath(spec),
-        os.path.normpath(review_path(spec)),
-        os.path.normpath(receipt_path(spec)),
-        os.path.normpath(sabotage_path(spec)),
-    }
-    candidate = path if os.path.isabs(path) else os.path.join(cwd or ".", path)
-    return os.path.normpath(candidate) in allowed
+    allowed = {os.path.normpath(item) for item in meta_files(spec)}
+    return os.path.normpath(os.path.join(cwd or ".", path)) in allowed
 
 
 def spec_hash(path):
@@ -80,7 +73,7 @@ def missing_problems(spec):
             root / "templates" / "done-means-review.md",
         ),
         "set spec_sha256 from: python3 %s hash %s" % (root / "done_means.py", spec),
-        "a fail verdict blocks; human entries are not checked",
+        "a review with a false flag or a gap blocks; human entries are not checked",
     ]
 
 
@@ -91,29 +84,27 @@ def string_list(value, label, problems):
     return value
 
 
+def text_problem(label, value, vague):
+    if not isinstance(value, str) or not value.strip():
+        return "%s is missing" % label
+    if "REPLACE" in value:
+        return "%s is still the template placeholder" % label
+    reason = vague(value)
+    if reason:
+        return "%s is vague: %s" % (label, reason)
+    return None
+
+
 def schema_problems(data):
     problems = []
     extra = set(data) - KEYS
     if extra:
         problems.append("unknown keys: %s" % ", ".join(sorted(extra)))
 
-    task = data.get("task")
-    if not isinstance(task, str) or not task.strip():
-        problems.append("task is missing")
-    elif task.strip() == "REPLACE":
-        problems.append("task is still the template placeholder")
-    elif vague_clause(task):
-        problems.append("task is vague: %s" % vague_clause(task))
-
-    done = data.get("done")
-    if not isinstance(done, str) or not done.strip():
-        problems.append("done is missing")
-    elif "REPLACE" in done:
-        problems.append("done is still the template placeholder")
-    else:
-        reason = vague_prompt(done)
+    for label, vague in (("task", vague_clause), ("done", vague_prompt)):
+        reason = text_problem(label, data.get(label), vague)
         if reason:
-            problems.append("done is vague: %s" % reason)
+            problems.append(reason)
 
     checks = data.get("checks")
     runnable = 0
@@ -129,47 +120,31 @@ def schema_problems(data):
             problems.append("checks[%d] has unknown keys: %s" % (index, ", ".join(sorted(unknown))))
         if not isinstance(check.get("id"), str) or not check.get("id", "").strip():
             problems.append("checks[%d] has no id" % index)
-        run = check.get("run")
-        if not isinstance(run, str) or not run.strip():
-            problems.append("checks[%d] has no run command" % index)
+        run_problem = text_problem("checks[%d] run" % index, check.get("run"), vague_clause)
+        if run_problem:
+            problems.append(run_problem)
         else:
-            reason = vague_clause(run)
-            if reason:
-                problems.append("checks[%d] run is vague: %s" % (index, reason))
-            elif "REPLACE" in run:
-                problems.append("checks[%d] run is still the template placeholder" % index)
-            else:
-                runnable += 1
-        if "fail_first" in check and not isinstance(check.get("fail_first"), bool):
-            problems.append("checks[%d] fail_first is not a boolean" % index)
+            runnable += 1
         if "sabotage" in check and not isinstance(check.get("sabotage"), bool):
             problems.append("checks[%d] sabotage is not a boolean" % index)
 
     must_change = []
-    paths = data.get("paths", {})
     if "paths" in data:
+        paths = data.get("paths")
         if not isinstance(paths, dict) or set(paths) - PATH_KEYS:
             problems.append("paths must contain only must_change and must_not_change")
-            paths = {}
         else:
-            for key in ("must_change", "must_not_change"):
-                if key in paths:
-                    string_list(paths.get(key), "paths.%s" % key, problems)
-            must_change = paths.get("must_change") or []
-            if not isinstance(must_change, list):
-                must_change = []
-
-    ci = data.get("ci", [])
-    if "ci" in data:
-        ci = string_list(ci, "ci", problems)
+            if "must_change" in paths:
+                must_change = string_list(paths["must_change"], "paths.must_change", problems)
+            if "must_not_change" in paths:
+                string_list(paths["must_not_change"], "paths.must_not_change", problems)
 
     if "human" in data:
         string_list(data.get("human"), "human", problems)
-
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
 
-    if runnable == 0 and not must_change and not ci:
+    if runnable == 0 and not must_change:
         problems.append("no runnable check")
     return problems
 
@@ -179,21 +154,18 @@ def review_problems(spec):
     root = package_root()
     if not os.path.isfile(path):
         return [
-            "no review verdict at %s" % path,
+            "no review at %s" % path,
             "judge observable, testable, scoped, and stopping_point using %s" % (
                 root / "templates" / "done-means-review.md"
             ),
             "bind spec_sha256 to %s" % spec_hash(spec),
         ]
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return ["review verdict at %s is not JSON" % path]
+    data = load(path)
     if not isinstance(data, dict):
-        return ["review verdict at %s is not a JSON object" % path]
+        return ["review at %s is not a JSON object" % path]
 
     problems = []
-    for key in ("verdict", "gaps", "spec_sha256") + REVIEW_FLAGS:
+    for key in ("gaps", "spec_sha256") + REVIEW_FLAGS:
         if key not in data:
             problems.append("review missing %s" % key)
     if problems:
@@ -205,20 +177,10 @@ def review_problems(spec):
         problems.append("review gaps must be a list of strings")
         gaps = []
     for flag in REVIEW_FLAGS:
-        if not isinstance(data.get(flag), bool):
-            problems.append("review %s is not a boolean" % flag)
-    verdict = data.get("verdict")
-    if verdict not in ("pass", "fail"):
-        problems.append("review verdict must be pass or fail")
-    elif verdict == "fail":
-        listed = "; ".join(gaps) if gaps else "no gaps listed"
-        problems.append("review failed: %s" % listed)
-    elif verdict == "pass":
-        for flag in REVIEW_FLAGS:
-            if data.get(flag) is False:
-                problems.append("review says pass but %s is false" % flag)
-        if gaps:
-            problems.append("review says pass but lists gaps")
+        if data.get(flag) is not True:
+            problems.append("review failed: %s is not true" % flag)
+    if gaps:
+        problems.append("review failed: %s" % "; ".join(gaps))
     return problems
 
 
@@ -269,10 +231,6 @@ def path_problems(cwd, data):
     paths = data.get("paths") or {}
     must = paths.get("must_change") or []
     must_not = paths.get("must_not_change") or []
-    if not isinstance(must, list):
-        must = []
-    if not isinstance(must_not, list):
-        must_not = []
     if not must and not must_not:
         return []
     found, error = changed_paths(cwd, default_base(cwd))
@@ -289,122 +247,33 @@ def path_problems(cwd, data):
     return problems
 
 
-def ci_problems(cwd, data):
-    names = data.get("ci") or []
-    if not isinstance(names, list) or not names:
-        return []
-    try:
-        probe = subprocess.run(
-            ["gh", "pr", "checks", "--json", "name,state"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-        )
-    except FileNotFoundError:
-        return ["ci: gh is not on PATH"]
-    if probe.returncode != 0:
-        detail = (probe.stderr or probe.stdout or "gh failed").strip()
-        return ["ci: gh pr checks failed: %s" % detail]
-    try:
-        rows = json.loads(probe.stdout or "[]")
-    except ValueError:
-        return ["ci: gh pr checks did not return JSON"]
-    if not isinstance(rows, list):
-        return ["ci: gh pr checks did not return a list"]
+def run_exit(command, cwd):
+    completed = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
+    return completed.returncode
+
+
+def command_problems(cwd, data):
     problems = []
-    for wanted in names:
-        hits = [
-            row for row in rows
-            if isinstance(row, dict) and (
-                row.get("name") == wanted
-                or str(row.get("name") or "").startswith(wanted + " (")
-            )
-        ]
-        if not hits:
-            problems.append("ci: %s is not reported" % wanted)
-        elif any(row.get("state") != "SUCCESS" for row in hits):
-            problems.append("ci: %s is not SUCCESS" % wanted)
+    for check in data["checks"]:
+        code = run_exit(check["run"], cwd)
+        if code != 0:
+            problems.append("check %s exited %s" % (check["id"], code))
     return problems
-
-
-def read_receipt(path):
-    if not os.path.isfile(path):
-        return []
-    rows = []
-    for line in Path(path).read_text().splitlines():
-        try:
-            parsed = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(parsed, dict):
-            rows.append(parsed)
-    return rows
-
-
-def append_receipt(path, ident, command, code):
-    row = {
-        "id": ident,
-        "run": command,
-        "exit": code,
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }
-    with open(path, "a") as handle:
-        handle.write(json.dumps(row) + "\n")
-
-
-def command_problems(spec, cwd, data):
-    prior = read_receipt(receipt_path(spec))
-    problems = []
-    for check in data.get("checks") or []:
-        command = check["run"]
-        ident = check["id"]
-        completed = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
-        append_receipt(receipt_path(spec), ident, command, completed.returncode)
-        if completed.returncode != 0:
-            problems.append("check %s exited %s" % (ident, completed.returncode))
-            continue
-        if check.get("fail_first"):
-            earlier = [
-                row for row in prior
-                if row.get("id") == ident and row.get("run") == command and row.get("exit") != 0
-            ]
-            if not earlier:
-                problems.append("check %s passed but has no recorded failing run" % ident)
-    return problems
-
-
-TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
-OUTPUT_CAP = 4000
-SABOTAGE_METHOD = "revert-nontest-diff"
 
 
 def is_test_path(path, patterns):
     if patterns is not None:
         return any(matches(pattern, path) for pattern in patterns)
-    parts = path.split("/")
-    if any(part in TEST_DIRS for part in parts[:-1]):
-        return True
-    base = parts[-1]
-    return (
-        base.startswith("test_")
-        or base.startswith("spec_")
-        or base.endswith("_test")
-        or ".test." in base
-        or ".spec." in base
-        or "_test." in base
-        or "_spec." in base
-    )
+    dirs, base = path.split("/")[:-1], path.split("/")[-1]
+    return any(part in TEST_DIRS for part in dirs) or any(fnmatch(base, name) for name in TEST_NAMES)
 
 
 def meta_paths(cwd, spec):
-    found = set()
-    for path in (spec, review_path(spec), receipt_path(spec), sabotage_path(spec)):
-        found.add(os.path.relpath(os.path.abspath(path), cwd))
-    return found
+    return {os.path.relpath(os.path.abspath(path), cwd) for path in meta_files(spec)}
 
 
 def sabotage_checks(data):
-    return [check for check in data.get("checks") or [] if check.get("sabotage", True)]
+    return [check for check in data["checks"] if check.get("sabotage", True)]
 
 
 def split_changes(cwd, spec, data):
@@ -412,7 +281,7 @@ def split_changes(cwd, spec, data):
     changed, error = changed_paths(cwd, base)
     if changed is None:
         return None, error
-    patterns = data.get("tests") if isinstance(data.get("tests"), list) else None
+    patterns = data.get("tests")
     meta = meta_paths(cwd, spec)
     tests, product = [], []
     for path in sorted(changed):
@@ -425,18 +294,6 @@ def split_changes(cwd, spec, data):
     return (base, tests, product), ""
 
 
-def fix_sha(cwd, product):
-    digest = hashlib.sha256()
-    for rel in product:
-        digest.update(rel.encode())
-        digest.update(b"\0")
-        full = os.path.join(cwd, rel)
-        if os.path.isfile(full):
-            digest.update(Path(full).read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
 def git_bytes(cwd, base, rel):
     probe = subprocess.run(
         ["git", "-C", cwd, "show", "%s:%s" % (base, rel)],
@@ -447,209 +304,147 @@ def git_bytes(cwd, base, rel):
     return probe.stdout
 
 
-def run_captured(command, cwd):
-    completed = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
-    output = (completed.stdout or "") + (completed.stderr or "")
-    if len(output) > OUTPUT_CAP:
-        output = output[:OUTPUT_CAP] + "\n...[truncated]"
-    if not output.strip():
-        output = "exit %s with no output" % completed.returncode
-    return completed.returncode, output
+def put(full, content):
+    if os.path.lexists(full) and not os.path.isdir(full):
+        os.remove(full)
+    if content is None:
+        return
+    parent = os.path.dirname(full)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    Path(full).write_bytes(content)
+
+
+def mirror_worktree(src, dst):
+    present = set()
+    for dirpath, dirnames, filenames in os.walk(src):
+        dirnames[:] = [name for name in dirnames if name != ".git"]
+        rel_dir = os.path.relpath(dirpath, src)
+        if rel_dir == ".":
+            rel_dir = ""
+        for name in filenames:
+            rel = os.path.join(rel_dir, name) if rel_dir else name
+            present.add(rel)
+            target = os.path.join(dst, rel)
+            folder = os.path.dirname(target)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            if os.path.lexists(target) and not os.path.isdir(target):
+                os.remove(target)
+            shutil.copyfile(os.path.join(dirpath, name), target)
+    for dirpath, dirnames, filenames in os.walk(dst):
+        dirnames[:] = [name for name in dirnames if name != ".git"]
+        rel_dir = os.path.relpath(dirpath, dst)
+        if rel_dir == ".":
+            rel_dir = ""
+        for name in list(filenames):
+            if name == ".git":
+                continue
+            rel = os.path.join(rel_dir, name) if rel_dir else name
+            if rel not in present:
+                os.remove(os.path.join(dirpath, name))
+
+
+def fill_tree(cwd, tree):
+    head = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"],
+        capture_output=True,
+    )
+    if head.returncode == 0:
+        added = subprocess.run(
+            ["git", "-C", cwd, "worktree", "add", "--detach", "--quiet", tree, "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if added.returncode == 0:
+            mirror_worktree(cwd, tree)
+            return True
+        subprocess.run(
+            ["git", "-C", cwd, "worktree", "remove", "--force", tree],
+            capture_output=True,
+        )
+    if os.path.isdir(tree):
+        shutil.rmtree(tree)
+    shutil.copytree(cwd, tree, symlinks=False, ignore=shutil.ignore_patterns(".git"))
+    return False
 
 
 def cycle(cwd, product, base, checks):
-    saved = []
+    parent = tempfile.mkdtemp(prefix="done-means-")
+    tree = os.path.join(parent, "tree")
+    linked = False
     try:
+        linked = fill_tree(cwd, tree)
+        saved = []
         for rel in product:
-            full = os.path.join(cwd, rel)
+            full = os.path.join(tree, rel)
             current = Path(full).read_bytes() if os.path.isfile(full) else None
             saved.append((full, current))
-            previous = git_bytes(cwd, base, rel)
-            if previous is None:
-                if os.path.isfile(full):
-                    os.remove(full)
-            else:
-                parent = os.path.dirname(full)
-                if parent:
-                    os.makedirs(parent, exist_ok=True)
-                Path(full).write_bytes(previous)
-        reds = [run_captured(check["run"], cwd) for check in checks]
-    finally:
+            put(full, git_bytes(cwd, base, rel))
+        reds = [run_exit(check["run"], tree) for check in checks]
         for full, current in saved:
-            if current is None:
-                if os.path.isfile(full):
-                    os.remove(full)
-            else:
-                parent = os.path.dirname(full)
-                if parent:
-                    os.makedirs(parent, exist_ok=True)
-                Path(full).write_bytes(current)
-    greens = [run_captured(check["run"], cwd) for check in checks]
-    rows = []
-    for check, red, green in zip(checks, reds, greens):
-        rows.append({
-            "id": check["id"],
-            "run": check["run"],
-            "red": {"exit": red[0], "output": red[1]},
-            "green": {"exit": green[0], "output": green[1]},
-        })
-    return rows
-
-
-def evidence_problems(evidence, checks, product, digest):
-    problems = []
-    if evidence.get("method") != SABOTAGE_METHOD:
-        problems.append("sabotage: method must be revert-nontest-diff")
-    if evidence.get("reverted") != product:
-        problems.append("sabotage: reverted files do not match the non-test diff")
-    if evidence.get("fix_sha256") != digest:
-        problems.append("sabotage: fix_sha256 does not match the non-test diff")
-    rows = evidence.get("checks")
-    if not isinstance(rows, list) or len(rows) != len(checks):
-        problems.append("sabotage: evidence checks do not match the spec")
-        return problems
-    for check, row in zip(checks, rows):
-        if not isinstance(row, dict) or row.get("id") != check["id"] or row.get("run") != check["run"]:
-            problems.append("sabotage: evidence is not for check %s" % check["id"])
-            continue
-        red = row.get("red") if isinstance(row.get("red"), dict) else {}
-        green = row.get("green") if isinstance(row.get("green"), dict) else {}
-        red_exit = red.get("exit")
-        if type(red_exit) is not int or red_exit == 0:
-            problems.append("sabotage: check %s has no failing red run" % check["id"])
-        elif not isinstance(red.get("output"), str) or not red.get("output").strip():
-            problems.append("sabotage: check %s red output is empty" % check["id"])
-        green_exit = green.get("exit")
-        if type(green_exit) is not int or green_exit != 0:
-            problems.append("sabotage: check %s did not pass after restore" % check["id"])
-        elif not isinstance(green.get("output"), str):
-            problems.append("sabotage: check %s green output is missing" % check["id"])
-    return problems
-
-
-def sabotage_scope(cwd, spec, data):
-    split, error = split_changes(cwd, spec, data)
-    if split is None:
-        return None, error
-    base, tests, product = split
-    checks = sabotage_checks(data)
-    explicit = any(check.get("sabotage") is True for check in data.get("checks") or [])
-    if not tests and not explicit:
-        return ("skip",), ""
-    if not checks:
-        return ("block", "sabotage: changed tests have no check to run"), ""
-    if not product:
-        return ("block", "sabotage: no non-test diff to revert"), ""
-    return ("run", base, product, checks), ""
-
-
-def record_sabotage(spec, cwd, data):
-    scope, error = sabotage_scope(cwd, spec, data)
-    if scope is None:
-        return ["sabotage: %s" % error]
-    if scope[0] == "skip":
-        return ["sabotage: no changed test to prove"]
-    if scope[0] == "block":
-        return [scope[1]]
-    _kind, base, product, checks = scope
-    rows = cycle(cwd, product, base, checks)
-    problems = []
-    for row in rows:
-        if row["red"]["exit"] == 0:
-            problems.append(
-                "sabotage: check %s still passed after reverting %s"
-                % (row["id"], ", ".join(product))
+            put(full, current)
+        greens = [run_exit(check["run"], tree) for check in checks]
+        return reds, greens
+    finally:
+        if linked:
+            subprocess.run(
+                ["git", "-C", cwd, "worktree", "remove", "--force", tree],
+                capture_output=True,
             )
-        if row["green"]["exit"] != 0:
-            problems.append(
-                "sabotage: check %s failed after restore (exit %s)"
-                % (row["id"], row["green"]["exit"])
-            )
-    if problems:
-        return problems
-    payload = {
-        "method": SABOTAGE_METHOD,
-        "base": base,
-        "reverted": product,
-        "fix_sha256": fix_sha(cwd, product),
-        "checks": rows,
-    }
-    Path(sabotage_path(spec)).write_text(json.dumps(payload, indent=2) + "\n")
-    return []
+        shutil.rmtree(parent, ignore_errors=True)
 
 
 def sabotage_problems(spec, cwd, data):
-    scope, error = sabotage_scope(cwd, spec, data)
-    if scope is None:
-        explicit = any(check.get("sabotage") is True for check in data.get("checks") or [])
-        if not explicit:
-            return []
-        return ["sabotage: %s" % error]
-    if scope[0] == "skip":
+    explicit = any(check.get("sabotage") is True for check in data["checks"])
+    split, error = split_changes(cwd, spec, data)
+    if split is None:
+        return ["sabotage: %s" % error] if explicit else []
+    base, tests, product = split
+    if not tests and not explicit:
         return []
-    if scope[0] == "block":
-        return [scope[1]]
-    _kind, base, product, checks = scope
-    path = sabotage_path(spec)
-    root = package_root()
-    if not os.path.isfile(path):
-        return [
-            "no sabotage evidence at %s" % path,
-            "run: python3 %s sabotage %s" % (root / "done_means.py", spec),
-            "playbook: %s" % (root / "templates" / "done-means-sabotage.md"),
-        ]
-    evidence = load(path)
-    if evidence is None:
-        return ["sabotage evidence at %s is not JSON" % path]
-    problems = evidence_problems(evidence, checks, product, fix_sha(cwd, product))
-    if problems:
-        return problems
-    live = cycle(cwd, product, base, checks)
-    recorded = evidence.get("checks") or []
-    for row, fresh in zip(recorded, live):
-        if row["red"]["exit"] != fresh["red"]["exit"]:
+    checks = sabotage_checks(data)
+    if not checks:
+        return ["sabotage: changed tests have no check to run"]
+    if not product:
+        return ["sabotage: no non-test diff to revert"]
+    try:
+        reds, greens = cycle(cwd, product, base, checks)
+    except OSError as error:
+        return ["sabotage: could not stage a copy: %s" % error]
+    problems = []
+    for check, red, green in zip(checks, reds, greens):
+        if red == 0:
             problems.append(
-                "sabotage: check %s recorded red exit %s but reverting the non-test diff now exits %s"
-                % (row["id"], row["red"]["exit"], fresh["red"]["exit"])
+                "sabotage: check %s still passed after reverting %s" % (check["id"], ", ".join(product))
             )
-        if row["green"]["exit"] != fresh["green"]["exit"]:
-            problems.append(
-                "sabotage: check %s recorded green exit %s but the restored tree now exits %s"
-                % (row["id"], row["green"]["exit"], fresh["green"]["exit"])
-            )
+        if green != 0:
+            problems.append("sabotage: check %s failed after restore (exit %s)" % (check["id"], green))
     return problems
 
 
 def execute(spec, cwd, data):
-    return (
-        command_problems(spec, cwd, data)
-        + path_problems(cwd, data)
-        + ci_problems(cwd, data)
-        + sabotage_problems(spec, cwd, data)
-    )
+    return command_problems(cwd, data) + path_problems(cwd, data) + sabotage_problems(spec, cwd, data)
+
+
+def spec_problems(spec):
+    if not os.path.isfile(spec):
+        return missing_problems(spec), None
+    data = load(spec)
+    if data is None:
+        return ["%s is not JSON" % spec], None
+    return schema_problems(data), data
 
 
 def start_problems(cwd, spec=None):
     spec = spec or locate(cwd)
-    if not os.path.isfile(spec):
-        return missing_problems(spec), None
-    data = load(spec)
-    if data is None:
-        return ["%s is not JSON" % spec], None
-    problems = schema_problems(data)
-    if problems:
-        return problems, data
-    return review_problems(spec), data
+    problems, data = spec_problems(spec)
+    return problems or review_problems(spec), data
 
 
 def finish_problems(cwd, spec=None):
     spec = spec or locate(cwd)
-    if not os.path.isfile(spec):
-        return missing_problems(spec), None
-    data = load(spec)
-    if data is None:
-        return ["%s is not JSON" % spec], None
-    problems = schema_problems(data)
+    problems, data = spec_problems(spec)
     if problems:
         return problems, data
     return review_problems(spec) + execute(spec, cwd, data), data
@@ -664,7 +459,7 @@ def report(problems, data):
         print(format_block(problems))
         return 1
     print("ok")
-    human = data.get("human") if isinstance(data, dict) else None
+    human = (data or {}).get("human")
     if human:
         print("UNENFORCED")
         for item in human:
@@ -672,12 +467,11 @@ def report(problems, data):
     return 0
 
 
-USAGE = """usage: done_means.py validate|run|sabotage|hash [spec-or-dir]
+USAGE = """usage: done_means.py validate|run|hash [spec-or-dir]
 
-validate   schema, vagueness, and a passing review verdict
-run        validate, then checks, paths, CI, and sabotage evidence
-sabotage   revert the non-test diff, record red, restore, record green
-hash       print the spec sha256 a review verdict must cite
+validate   schema, vagueness, and a passing review
+run        validate, then checks, paths, and a live revert of the non-test diff
+hash       print the spec sha256 a review must cite
 """
 
 
@@ -705,16 +499,6 @@ def main(argv):
     if command == "validate":
         problems, data = start_problems(cwd, spec)
         return report(problems, data)
-    if command == "sabotage":
-        if not os.path.isfile(spec):
-            return report(missing_problems(spec), None)
-        data = load(spec)
-        if data is None:
-            return report(["%s is not JSON" % spec], None)
-        problems = schema_problems(data)
-        if problems:
-            return report(problems, data)
-        return report(record_sabotage(spec, cwd, data), data)
     if command == "run":
         problems, data = finish_problems(cwd, spec)
         return report(problems, data)

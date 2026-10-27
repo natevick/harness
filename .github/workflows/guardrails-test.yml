@@ -60,11 +60,3 @@ jobs:
         working-directory: packages/guardrails
         run: bash tests/run.sh
 
-      - name: Done-means spec, when the repo has one
-        run: |
-          if [ -f done-means.json ]; then
-            python3 packages/guardrails/done_means.py run
-          else
-            echo "no done-means.json"
-          fi
-

@@ -61,6 +61,9 @@ names "an open-ended duration" "an open-ended duration" \
   "keep going forever on the WAF rules"
 
 echo "── ordinary completion wording is not an unbounded loop ──"
+check silent "iterate until done" "iterate until done"
+check silent "until the migration is complete" \
+  "/loop iterate on the specs until the migration is complete"
 check silent "until it passes CI" "repeat the deploy until it passes CI"
 check silent "until the tests pass" "keep going until the tests pass"
 check silent "until the build finishes" "/goal repeat the build until it is finished"
@@ -82,6 +85,11 @@ check silent "a plain question" "what is the behind-count on the checkout servic
 check silent "an empty prompt" ""
 check silent "an unbounded phrase with no autonomous work" \
   "the incident ran until nothing was left of the cache"
+check silent "repeat inside repeated is not a marker" \
+  "The numbers were repeated in the log."
+check silent "implement dark mode names an outcome" "Implement dark mode"
+check silent "until does not pair with a later paragraph" \
+  "$(printf '%s\n' 'Implement the parser.' '' 'Leave it until the design is settled.' 'NOTHING gets posted.')"
 
 echo "── broken input must never take the turn down ──"
 survives() {

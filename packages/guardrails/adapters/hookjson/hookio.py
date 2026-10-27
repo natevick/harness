@@ -359,3 +359,14 @@ def final_assistant_text(path, attempts=10, delay=0.15):
         if attempt < attempts - 1:
             time.sleep(delay)
     return fallback
+
+
+def assistant_reply(event):
+    text = stop_message(event)
+    if text:
+        return text
+    transcript = transcript_path(event)
+    if not transcript:
+        note_missing_stop_text(event)
+        return None
+    return final_assistant_text(transcript)
