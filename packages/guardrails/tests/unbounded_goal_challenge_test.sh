@@ -144,6 +144,24 @@ check silent "nineteen rounds" "loop until clean, nineteen rounds"
 check silent "sixty minutes" "loop until clean, sixty minutes"
 check silent "hundred tokens" "loop until clean, hundred tokens"
 check silent "one hour" "loop until clean, one hour"
+check silent "max seventy rounds" "loop until clean, max seventy rounds"
+check silent "eighty iterations" "loop until clean, eighty iterations"
+
+echo "── a level phrase counts only after a stop rule ──"
+check silent "stop once nothing above high" \
+  "loop until clean, stop once nothing above high"
+check silent "done when previously known" \
+  "loop until clean, done when the findings are previously known"
+check silent "until the items are below low" \
+  "loop until the open items are below low"
+check fire "below low before the stop rule" \
+  "Fix findings below low, then loop until clean"
+check fire "below high before the stop rule" \
+  "Ship notes below high, then loop until clean"
+check fire "bare previously known findings" \
+  "Fix the queue and ignore previously known findings, then loop until clean"
+check fire "bare nothing above medium" \
+  "Fix the chart to show nothing above medium, then loop until clean"
 
 echo "── a severity floor or diminishing returns is a bound ──"
 check silent "nothing above medium" \

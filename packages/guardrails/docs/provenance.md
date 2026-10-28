@@ -138,9 +138,9 @@ outcome and no cap. Checkable is a backtick
 command, test, CI, build, lint, exit status, or a failure count. A cap is N rounds,
 iterations, or attempts, with or without max, maximum, at most, or up to; a time or
 token budget; or N minutes, hours, seconds, or tokens. N is digits or a number word
-from one through twenty, plus thirty, forty, fifty, sixty, ninety, and hundred. A
-severity floor (nothing above low, medium, high, or critical) and a diminishing-returns
-rule (findings all previously known, or below one of those levels) are caps too.
+from one through twenty, then twenty through ninety by tens, plus hundred. Below a
+level, nothing above a level, or previously known findings count only after stop
+when, stop once, until, or done when.
 "until clean", "until nothing", "until no more findings", "until you're satisfied",
 "forever", and "indefinitely" still warn. "until the panel returns no findings" is the
 note's own example and did not match, because "no findings" is not "no more". It matches

@@ -51,18 +51,18 @@ NUMBER_WORDS = (
     "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
     "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
     "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
-    "sixty", "ninety", "hundred",
+    "sixty", "seventy", "eighty", "ninety", "hundred",
 )
 NUMBER = r"(?:\d+|" + "|".join(NUMBER_WORDS) + ")"
 LEVEL = r"(?:low|medium|high|critical)"
+STOP_RULE = r"(?:stop when|stop once|done when|until)"
 
 CAP = re.compile(
     r"\b(?:(?:max(?:imum)?|at most|up to)\s+)?" + NUMBER + r"\s+(?:rounds?|iterations?|attempts?)\b"
     r"|\b(?:time|token)\s+budget\b"
     r"|\b" + NUMBER + r"\s+(?:minutes?|hours?|seconds?|tokens?)\b"
-    r"|\bstop when a round returns nothing above " + LEVEL + r"\b"
-    r"|\bstop when a round's findings are all previously[- ]known\b"
-    r"|\bbelow " + LEVEL + r"\b",
+    r"|\b" + STOP_RULE + r"\b.{0,100}?(?:below " + LEVEL
+    + r"|nothing above " + LEVEL + r"|previously[- ]known)\b",
     re.I,
 )
 
@@ -99,10 +99,10 @@ response:
    — reviewers, fuzzers and scanners keep finding things, and each fix creates new
    surface. Same for until it's clean or until you're satisfied.
 2. Propose a BOUNDED replacement and get agreement. Good shapes:
-     - a round/iteration cap ("3 rounds, then report")
-     - a wall-clock or token budget ("token budget")
-     - a severity floor ("stop when a round returns nothing above medium")
-     - a diminishing-returns rule ("stop when a round's findings are all previously known" or "below medium")
+     - a round, iteration, or attempt count ("3 rounds, then report", "max seventy rounds", "maximum 2 rounds", "at most 3 iterations", "up to eighty attempts", "five rounds", "eighty iterations")
+     - a time or token budget ("10 minutes", "ten minutes", "one hour", "30 seconds", "ninety seconds", "hundred tokens", "time budget", "token budget")
+     - a severity floor after stop when, stop once, until, or done when ("stop when a round returns nothing above medium", "stop once nothing above high", "done when nothing above low", "nothing above critical")
+     - a diminishing-returns rule after those same words ("stop when a round's findings are all previously known", "done when the findings are previously known", "below medium")
 3. State what you will deliver when the bound is hit, including the case where
    work is still outstanding. I stopped at the cap with N items open is a
    legitimate and expected outcome — not a failure to be worked around.
@@ -110,7 +110,7 @@ response:
    will block stopping and push you into repeated one-more-action turns. The user
    must clear it; you cannot.
 
-Caps that count use digits or number words, for example "max 3 rounds", "five rounds", "10 minutes".
+Caps that count: round, iteration, or attempt counts in digits or number words (one through twenty, then twenty through ninety, plus hundred), with or without max, maximum, at most, or up to; minutes, hours, seconds, tokens, or a time or token budget; a severity floor (nothing above low, medium, high, or critical) only after stop when, stop once, until, or done when; and a diminishing-returns stop rule (previously known findings, or below one of those levels) only after those same words.
 
 Do not silently accept the unbounded form and start working. Raising the bound
 costs one exchange. Not raising it has cost a full session.
