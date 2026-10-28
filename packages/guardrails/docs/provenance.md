@@ -127,10 +127,30 @@ words afterwards: "I should have given a stronger bounded end."
 The failure is structural, not a lapse: on any adversarial process (review panels, fuzzing,
 red-teaming, "find all the bugs"), "until it returns nothing" has no reachable end state.
 
-The prompt gate warns on that shape. It does not block the submit. The edit gate is the
-enforcement: a `done-means.json` with a concrete `done` sentence and a passing review bound to
-the spec hash, before any other edit. A done claim re-runs the checks and reverts the non-test
-diff in a temporary worktree: the checks must fail there and pass after the diff is put back.
+The prompt gate warns on that shape. It does not block the submit. On 2026-10-27 the same
+scan treated a bounded goal as that shape: "until" followed by "zero" fired on "loop until
+`npm test` has zero failures, max 5 rounds" and on "loop until zero failing tests", and a
+task that quoted "loop until clean" as an example was read as the instruction. Citations in
+double quotes or backticks are removed before the sentence split, so a period inside
+a citation is not a sentence break and cannot hide a cap or leak a quoted until-clause.
+An until-clause outside a citation stands only when that sentence has no checkable
+outcome and no cap. Checkable is a backtick
+command, test, CI, build, lint, exit status, or a failure count. A cap is N rounds,
+iterations, or attempts, with or without max, maximum, at most, or up to; a time or
+token budget; or N minutes, hours, seconds, or tokens. N is digits or a number word
+from one through twenty, then twenty through ninety by tens, plus hundred. Below a
+level, nothing above a level, or previously known findings count only after stop
+when, stop once, until, or done when.
+"until clean", "until nothing", "until no more findings", "until you're satisfied",
+"forever", and "indefinitely" still warn. "until the panel returns no findings" is the
+note's own example and did not match, because "no findings" is not "no more". It matches
+now. A cap does not silence "forever". The done-means vagueness scan uses the same rule, so
+a checkable or capped until-clause is no longer rejected as vague there either.
+
+The edit gate is the enforcement: a `done-means.json` with a concrete `done` sentence and a
+passing review bound to the spec hash, before any other edit. A done claim re-runs the
+checks and reverts the non-test diff in a temporary worktree: the checks must fail there
+and pass after the diff is put back.
 What is checked and what is only recorded is in [`done-means.md`](done-means.md).
 Machine-generated prompt prefixes stay excluded.
 

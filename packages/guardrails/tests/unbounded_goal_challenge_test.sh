@@ -91,6 +91,112 @@ check silent "implement dark mode names an outcome" "Implement dark mode"
 check silent "until does not pair with a later paragraph" \
   "$(printf '%s\n' 'Implement the parser.' '' 'Leave it until the design is settled.' 'NOTHING gets posted.')"
 
+echo "── a bounded until-clause is not an unbounded finish ──"
+check silent "npm test zero failures, max 5 rounds" \
+  'loop until `npm test` has zero failures, max 5 rounds'
+check silent "zero failing tests" "loop until zero failing tests"
+check silent "zero failures" "loop until zero failures"
+check silent "backtick command is clean" 'loop until `npm test` is clean'
+check silent "build is clean" "loop until the build is clean"
+check silent "cap on an until-clause" "loop until clean, max 5 rounds"
+check silent "cap on a subjective until-clause" "loop until you're satisfied, max 5 rounds"
+check silent "time budget" "loop until clean, time budget"
+check silent "double-quoted examples" \
+  'Fix the guard so "loop until clean" still warns but "loop until `npm test` has zero failures, max 5 rounds" passes'
+check silent "backtick-quoted example" \
+  'Fix the guard so `loop until clean` still warns'
+check fire "quoted example plus a bare until clean" \
+  'Fix the guard so "loop until clean" still warns, then loop until clean'
+check fire "a cited cap is not a cap" \
+  'loop until clean, and the note says "max 5 rounds"'
+check fire "a cited command is not the instruction" \
+  'loop until clean, as in "loop until `npm test` has zero failures"'
+check silent "period inside a quoted example" \
+  'Fix the guard so "loop until clean. still warns" is quoted'
+check fire "period inside a cited cap" \
+  'loop until clean, he said "max 5 rounds. then stop"'
+check fire "a later command does not cover an earlier sentence" \
+  'loop until clean. Then run `npm test`.'
+
+echo "── a bare unbounded finish still warns ──"
+check fire "loop until clean" "loop until clean"
+check fire "panel returns no findings" "keep going until the panel returns no findings"
+check fire "repeat forever" "repeat forever"
+check fire "loop until nothing" "loop until nothing"
+check fire "until no more findings" "loop until no more findings"
+check fire "until you're satisfied" "loop until you're satisfied"
+check fire "keep going indefinitely" "keep going indefinitely"
+check fire "forever keeps its warning beside a cap" "repeat forever, max 5 rounds"
+check fire "forever beside five rounds" "repeat forever, five rounds"
+
+echo "── a count of rounds needs no max ──"
+check silent "3 rounds then report" "loop until clean, 3 rounds then report"
+check silent "3 iterations" "loop until clean, 3 iterations"
+check silent "4 attempts" "loop until clean, 4 attempts"
+check silent "at most 3 rounds" "loop until clean, at most 3 rounds"
+check silent "up to 2 iterations" "loop until clean, up to 2 iterations"
+check silent "at most twenty attempts" "loop until clean, at most twenty attempts"
+
+echo "── number words are caps ──"
+check silent "max five rounds" "loop until clean, max five rounds"
+check silent "ten minutes" "loop until clean, ten minutes"
+check silent "nineteen rounds" "loop until clean, nineteen rounds"
+check silent "sixty minutes" "loop until clean, sixty minutes"
+check silent "hundred tokens" "loop until clean, hundred tokens"
+check silent "one hour" "loop until clean, one hour"
+check silent "max seventy rounds" "loop until clean, max seventy rounds"
+check silent "eighty iterations" "loop until clean, eighty iterations"
+
+echo "── a level phrase counts only after a stop rule ──"
+check silent "stop once nothing above high" \
+  "loop until clean, stop once nothing above high"
+check silent "done when previously known" \
+  "loop until clean, done when the findings are previously known"
+check silent "until the items are below low" \
+  "loop until the open items are below low"
+check fire "below low before the stop rule" \
+  "Fix findings below low, then loop until clean"
+check fire "below high before the stop rule" \
+  "Ship notes below high, then loop until clean"
+check fire "bare previously known findings" \
+  "Fix the queue and ignore previously known findings, then loop until clean"
+check fire "bare nothing above medium" \
+  "Fix the chart to show nothing above medium, then loop until clean"
+
+echo "── a severity floor or diminishing returns is a bound ──"
+check silent "nothing above medium" \
+  "loop until clean, stop when a round returns nothing above medium"
+check silent "nothing above critical" \
+  "loop until clean, stop when a round returns nothing above critical"
+check silent "previously known findings" \
+  "loop until clean, stop when a round's findings are all previously known"
+check silent "previously-known findings" \
+  "loop until clean, stop when a round's findings are all previously-known"
+check silent "below medium" "loop until clean, below medium"
+check silent "below low" "loop until clean, below low"
+
+echo "── every quoted bound in NOTE passes inside an until-sentence ──"
+pkg="$(cd "$(dirname "$0")/.." && pwd)"
+if ! bounds="$(python3 -c '
+import re, sys
+sys.path.insert(0, sys.argv[1])
+from guardrails.goals import NOTE
+found = re.findall(r"\"([^\"\n]+)\"", NOTE)
+if not found:
+    raise SystemExit(1)
+sys.stdout.write("\n".join(found))
+' "$pkg")"; then
+  fail=$((fail + 1))
+  printf '  FAIL %-58s extractor found no bounds\n' "NOTE quoted bounds"
+else
+  while IFS= read -r quote; do
+    [ -n "$quote" ] || continue
+    check silent "NOTE: $quote" "loop until clean, $quote"
+  done <<EOF
+$bounds
+EOF
+fi
+
 echo "── broken input must never take the turn down ──"
 survives() {
   local name="$1" stdin="$2"

@@ -27,6 +27,7 @@ UNBOUNDED_TERMINATORS = (
     (("until", "zero"), EXHAUSTION),
     (("until", "no new"), EXHAUSTION),
     (("until", "no further"), EXHAUSTION),
+    (("until", "no findings"), EXHAUSTION),
     (("until", "empty"), EXHAUSTION),
     (("until", "clean"), EXHAUSTION),
     (("until", "you are satisfied"), SUBJECTIVE),
@@ -37,6 +38,32 @@ UNBOUNDED_TERMINATORS = (
     (("continuously",), OPEN_ENDED),
     (("non-stop",), OPEN_ENDED),
     (("nonstop",), OPEN_ENDED),
+)
+
+CHECKABLE = re.compile(
+    r"\b(?:tests?|ci|builds?|lint|exits?|status)\b"
+    r"|\b(?:zero|\d+)\s+failures?\b"
+    r"|\b(?:zero|\d+)\s+failing\s+tests?\b",
+    re.I,
+)
+
+NUMBER_WORDS = (
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+    "sixty", "seventy", "eighty", "ninety", "hundred",
+)
+NUMBER = r"(?:\d+|" + "|".join(NUMBER_WORDS) + ")"
+LEVEL = r"(?:low|medium|high|critical)"
+STOP_RULE = r"(?:stop when|stop once|done when|until)"
+
+CAP = re.compile(
+    r"\b(?:(?:max(?:imum)?|at most|up to)\s+)?" + NUMBER + r"\s+(?:rounds?|iterations?|attempts?)\b"
+    r"|\b(?:time|token)\s+budget\b"
+    r"|\b" + NUMBER + r"\s+(?:minutes?|hours?|seconds?|tokens?)\b"
+    r"|\b" + STOP_RULE + r"\b.{0,100}?(?:below " + LEVEL
+    + r"|nothing above " + LEVEL + r"|previously[- ]known)\b",
+    re.I,
 )
 
 MEASURABLE = re.compile(
@@ -68,21 +95,22 @@ be reachable: it names {kind}. Before doing ANY of the work, do this in your fir
 response:
 
 1. Name the terminator you were given and say plainly whether it can be reached.
-   "Until the panel returns no findings" is NOT reachable on an adversarial process
+   Until the panel returns no findings is NOT reachable on an adversarial process
    — reviewers, fuzzers and scanners keep finding things, and each fix creates new
-   surface. Same for "until it's clean" or "until you're satisfied".
+   surface. Same for until it's clean or until you're satisfied.
 2. Propose a BOUNDED replacement and get agreement. Good shapes:
-     - a round/iteration cap ("3 rounds, then report")
-     - a wall-clock or token budget
-     - a severity floor ("stop when a round returns nothing above medium")
-     - a diminishing-returns rule ("stop when a round's findings are all
-       previously-known or below X")
+     - a round, iteration, or attempt count ("3 rounds, then report", "max seventy rounds", "maximum 2 rounds", "at most 3 iterations", "up to eighty attempts", "five rounds", "eighty iterations")
+     - a time or token budget ("10 minutes", "ten minutes", "one hour", "30 seconds", "ninety seconds", "hundred tokens", "time budget", "token budget")
+     - a severity floor after stop when, stop once, until, or done when ("stop when a round returns nothing above medium", "stop once nothing above high", "done when nothing above low", "nothing above critical")
+     - a diminishing-returns rule after those same words ("stop when a round's findings are all previously known", "done when the findings are previously known", "below medium")
 3. State what you will deliver when the bound is hit, including the case where
-   work is still outstanding. "I stopped at the cap with N items open" is a
+   work is still outstanding. I stopped at the cap with N items open is a
    legitimate and expected outcome — not a failure to be worked around.
 4. If a stop-time hook is enforcing the unbounded condition, say so explicitly: it
    will block stopping and push you into repeated one-more-action turns. The user
    must clear it; you cannot.
+
+Caps that count: round, iteration, or attempt counts in digits or number words (one through twenty, then twenty through ninety, plus hundred), with or without max, maximum, at most, or up to; minutes, hours, seconds, tokens, or a time or token budget; a severity floor (nothing above low, medium, high, or critical) only after stop when, stop once, until, or done when; and a diminishing-returns stop rule (previously known findings, or below one of those levels) only after those same words.
 
 Do not silently accept the unbounded form and start working. Raising the bound
 costs one exchange. Not raising it has cost a full session.
@@ -99,16 +127,55 @@ def ordered_in(text, needles):
     return True
 
 
-def ordered(text, needles):
-    for sentence in re.split(r"[.!?\n]+", (text or "").lower()):
-        if ordered_in(sentence, needles):
+def terminator_in(text):
+    for needles, _kind in UNBOUNDED_TERMINATORS:
+        if ordered_in(text, needles):
+            return True
+    return False
+
+
+def blank_citations(text):
+    chars = list(text)
+    commands = []
+    index = 0
+    length = len(text)
+    while index < length:
+        mark = text[index]
+        if mark not in "`\"":
+            index += 1
+            continue
+        end = text.find(mark, index + 1)
+        if end < 0:
+            break
+        inner = text[index + 1:end]
+        if mark == "`" and inner.strip() and not terminator_in(inner):
+            commands.append((index, end + 1))
+        for cursor in range(index, end + 1):
+            chars[cursor] = " "
+        index = end + 1
+    return "".join(chars), commands
+
+
+def covers(commands, start, end):
+    for command_start, command_end in commands:
+        if command_start < end and command_end > start:
             return True
     return False
 
 
 def vague_clause(text):
-    for needles, kind in UNBOUNDED_TERMINATORS:
-        if ordered(text, needles):
+    plain, commands = blank_citations((text or "").lower())
+    for match in re.finditer(r"[^.!?\n]+", plain):
+        sentence = match.group()
+        start, end = match.span()
+        exempt = covers(commands, start, end) or bool(
+            CHECKABLE.search(sentence) or CAP.search(sentence)
+        )
+        for needles, kind in UNBOUNDED_TERMINATORS:
+            if not ordered_in(sentence, needles):
+                continue
+            if needles[0] == "until" and exempt:
+                continue
             return kind
     return None
 
