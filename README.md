@@ -63,7 +63,9 @@ See [`SECURITY.md`](SECURITY.md) for state-dir permissions, decision logging, an
 Push/PR (and manual `workflow_dispatch`) runs on **Linux and macOS** via [`.github/workflows/guardrails-test.yml`](.github/workflows/guardrails-test.yml):
 
 - Smoke: root and per-package `install.sh -h`
+- `npm ci --prefix packages/guardrails` (the duplicate-logic check shells out to jscpd)
 - Primary: `packages/guardrails/tests/run.sh` (Python 3.10+)
+- `python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json`
 
 ## License
 

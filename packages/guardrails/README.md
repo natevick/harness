@@ -21,6 +21,10 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 | `truncation` | a command whose output landed exactly on its own `head -n` cap | warn |
 | `goals` | an unbounded finish, a missing done-means spec, or a done claim whose checks fail | warn at prompt-submit; block on the edit and at stop |
 | `delegation` | 30 consecutive shell calls with no subagent | warn |
+| `duplicates` | a new copied block of code, via jscpd | fail the CI command |
+| `catch-ignore` | an empty or no-op `catch` / `except` / `rescue` | fail the CI command |
+
+`duplicates` and `catch-ignore` are not hooks. A repo opts in with a config file and runs one command in CI. Wiring, thresholds, baselines, and the line markers are below.
 
 Done-means, including what is enforced and what is only recorded, is [`docs/done-means.md`](docs/done-means.md).
 
@@ -69,6 +73,34 @@ Harnesses: `claude-code`, `codex`, `kimi`, `grok`, `cursor`. No `--target` print
 file needs `--force`, which backs it up and replaces this pack's entries by script name. Python
 3.10+ is checked first and the checkout path is quoted. Adapt the `claude-code` MCP matcher to
 your server names.
+
+## Repo checks
+
+One command runs every guard the repo has turned on:
+
+```sh
+npm ci --prefix packages/guardrails
+python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json
+```
+
+Paths inside the config are relative to the config file. A guard with `"enabled": false`, or no section at all, does not run. Copy `simplicity.json` into the repo that wants the checks, point `paths` at the tree to scan, and call that same command from CI.
+
+`duplicates` shells out to [jscpd](https://github.com/kucherenko/jscpd) (`minLines`, `minTokens`). It fails when a clone is not in the baseline file. The message names both blocks and says to extract one shared helper. Refresh the baseline from a clean tree:
+
+```sh
+python3 packages/guardrails/check.py duplicates \
+  --root . --min-lines 5 --min-tokens 50 \
+  --baseline packages/guardrails/simplicity/duplicates-baseline.json \
+  --update-baseline
+```
+
+`catch-ignore` is a per-language scan of JS/TS, Python, Ruby, Java, and Elixir. An empty body fails, and so does a body that only passes, assigns a literal, increments, continues, or returns nothing. A body that rethrows, logs, or returns a value does not. The message says to handle it, rethrow it, or delete the try. Entries in the catch baseline carry a `reason`; an entry without one fails the command.
+
+This repo's own comment rule forbids a new comment in product code, so clones and swallows already on main are grandfathered in the baseline files. A repo that allows comments can mark one site instead: `duplicate-ok: <reason>` on both copies, or `catch-ignore-ok: <reason>` on the catch line. The reason is required.
+
+JSON files, `node_modules`, and this package's `tests/fixtures` are ignored by `simplicity.json`. The bench task and its reference solution are ignored by the duplicate check because they are a paired copy on purpose.
+
+Not enforced: two of the four Ruby ENV save/restore variants in the Oct 22 review are not the same tokens as the shared loop. The check fails on the identical pair only. Treating the other two spellings as the same logic is a judgment.
 
 ## Tests
 

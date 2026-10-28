@@ -148,3 +148,56 @@ that read `sys.stdin`. A heredoc *is* stdin, so the program read an empty string
 never fired once. The test is a change-detector: it plants an offender and an innocent
 `python3 -c` payload pipe on every run, and fails if it cannot tell them apart or if it had no
 population to scan.
+
+## duplicates — the same block, copied
+
+2026-10-22 simplicity pass, 39 duplicated-logic findings across 7 Selective PRs. Two of them are
+the proof:
+
+- selective-java-junit#1 finding 2. Test helpers copied across `ProtocolTest`, `ForkedSurefireIT`,
+  `DiscoveryTest`, and `ClientRun`. The reviewed head `16199644aaa2` is not on the public repo.
+  The public snapshot `c70deee` already keeps `batch`, `count`, `conformanceEnvironment`, and
+  `repo` once, in `ClientRun`. The fixture copies those published method bodies back into the four
+  classes the review names.
+- selective-ruby-core#80 finding 1, at the reviewed commit `c2ff5fd8`. The `around` block that
+  saves and restores ENV is byte-identical in `stdio_transport_spec.rb` and
+  `stdio_controller_spec.rb`. `controller_spec.rb` and `stdio_binary_spec.rb` spell the same idea
+  differently. Those two are not token clones. Not enforced.
+
+Architecture cannot reach into those trees from this repo, and no type system is shared by Java
+and Ruby (or by the other languages jscpd scans). The check wraps jscpd, fails only on a clone
+that is not in the baseline, and the error names both blocks and says to extract one shared
+helper. The Ruby fix in the fixture is the review's `with_env`. The Java fix leaves the helpers
+on `ClientRun` only.
+
+Clones already on this repo's main — the cursor and hookjson adapters, the installers, and a few
+test harnesses — are fingerprints in `simplicity/duplicates-baseline.json`. They stay because
+deleting them was not this change. A new clone is not in that file and fails.
+
+## catch-ignore — an empty catch that pretends to handle
+
+2026-10-22 simplicity pass, 8 catch-and-ignore findings. The proof is the before/after text in
+the reviews, because those PR heads are not on the public snapshots:
+
+- selective-js-vitest#1 finding 3: `catch { this.broken = true; }` around `stdin.end` and `kill`.
+  The review deletes the try.
+- finding 5: `catch (err) { if (err.missingTransport) {...} failures += 1; ...; continue; }`
+  around `openStdio`. Node's `spawn` does not throw there. The review deletes the try.
+- finding 6: `catch { void 0; }` around `child.kill`. The review calls `kill` and nothing else.
+- selective-python-pytest#1 finding 1: `except Exception: pass` around `get_plugin`. The review
+  deletes the try.
+- selective-ruby-core#80 finding 11: `rescue IOError` then `nil` around a second `close`. The
+  review deletes the rescue.
+
+Java `catch (Exception ignored) {}` and Elixir `rescue _ -> nil` are in the same test so the five
+languages the check claims are actually scanned. No Elixir review was attached.
+
+A catch that rethrows, logs, or returns a value is not this failure. `return None` is a value.
+`pass`, a literal assignment, a bare `return`, and `continue` are not. Empty is not.
+
+The same limit as duplicates: nothing in this repo's types sees a `rescue` in Ruby or a `catch`
+in Java. The check is the CI command. Its error says to handle it, rethrow it, or delete the try.
+
+Swallows already on main are `simplicity/catch-ignore-baseline.json`. Each entry has a reason.
+Most are "the state file is missing, so start from empty" or "a corrupt log line is skipped".
+They were not introduced here, and this repo does not allow a new comment to mark them in place.

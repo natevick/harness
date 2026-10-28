@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "path": "packages/bench/lib/usage.py",
+      "line": 66,
+      "fingerprint": "dd129b280979aa23",
+      "count": 1,
+      "reason": "a corrupt usage event is skipped and the parse continues"
+    },
+    {
+      "path": "packages/bench/lib/usage.py",
+      "line": 160,
+      "fingerprint": "dd129b280979aa23",
+      "count": 1,
+      "reason": "a corrupt usage event is skipped and the parse continues"
+    },
+    {
+      "path": "packages/bench/score.py",
+      "line": 65,
+      "fingerprint": "ff87f7b1960e2d72",
+      "count": 1,
+      "reason": "a corrupt score line is skipped and the parse continues"
+    },
+    {
+      "path": "packages/guardrails/adapters/cursor/cursorio.py",
+      "line": 215,
+      "fingerprint": "c2d7b280a3d910da",
+      "count": 1,
+      "reason": "a decision log that cannot be opened is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/cursor/cursorio.py",
+      "line": 220,
+      "fingerprint": "404f70feefb19181",
+      "count": 1,
+      "reason": "a decision log write that fails is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/cursor/cursorio.py",
+      "line": 314,
+      "fingerprint": "c2d7b280a3d910da",
+      "count": 1,
+      "reason": "an assistant-text stash that cannot be opened is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/cursor/cursorio.py",
+      "line": 319,
+      "fingerprint": "404f70feefb19181",
+      "count": 1,
+      "reason": "an assistant-text stash write that fails is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/cursor/cursorio.py",
+      "line": 369,
+      "fingerprint": "c2d7b280a3d910da",
+      "count": 1,
+      "reason": "a missing-stop marker that cannot be written is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/hookjson/hookio.py",
+      "line": 207,
+      "fingerprint": "fbe2ccf8bf2059f3",
+      "count": 1,
+      "reason": "a decision log that cannot be opened is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/hookjson/hookio.py",
+      "line": 212,
+      "fingerprint": "8ec37c65076276d3",
+      "count": 1,
+      "reason": "a decision log write that fails is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/hookjson/hookio.py",
+      "line": 291,
+      "fingerprint": "fbe2ccf8bf2059f3",
+      "count": 1,
+      "reason": "a missing-stop marker that cannot be written is dropped"
+    },
+    {
+      "path": "packages/guardrails/adapters/hookjson/hookio.py",
+      "line": 310,
+      "fingerprint": "26cbbe2ca60a8028",
+      "count": 1,
+      "reason": "a corrupt decisions.jsonl line is skipped and the read continues"
+    },
+    {
+      "path": "packages/guardrails/guardrails/brevity.py",
+      "line": 83,
+      "fingerprint": "f016daf440ce1e71",
+      "count": 1,
+      "reason": "a decision log that cannot be opened is dropped; the reply still ends"
+    },
+    {
+      "path": "packages/guardrails/guardrails/brevity.py",
+      "line": 93,
+      "fingerprint": "f016daf440ce1e71",
+      "count": 1,
+      "reason": "state that cannot be written is dropped; the next turn measures again"
+    },
+    {
+      "path": "packages/guardrails/guardrails/brevity.py",
+      "line": 116,
+      "fingerprint": "ffbbf9b56c3b005f",
+      "count": 1,
+      "reason": "a corrupt brevity log line is skipped and the count continues"
+    },
+    {
+      "path": "packages/guardrails/guardrails/brevity.py",
+      "line": 130,
+      "fingerprint": "f016daf440ce1e71",
+      "count": 1,
+      "reason": "a state directory that cannot be created leaves this turn unmeasured"
+    },
+    {
+      "path": "packages/guardrails/guardrails/comments.py",
+      "line": 25,
+      "fingerprint": "96722c590bc32a2a",
+      "count": 1,
+      "reason": "a temp root that cannot be canonicalized is kept as the path we have"
+    },
+    {
+      "path": "packages/guardrails/guardrails/delegation.py",
+      "line": 24,
+      "fingerprint": "d954b4580848da2f",
+      "count": 1,
+      "reason": "removing a missing delegation counter is already the empty state"
+    },
+    {
+      "path": "packages/guardrails/guardrails/delegation.py",
+      "line": 39,
+      "fingerprint": "1b71fa67c100e19c",
+      "count": 1,
+      "reason": "a missing delegation counter file means the count is zero"
+    },
+    {
+      "path": "packages/guardrails/guardrails/goals.py",
+      "line": 156,
+      "fingerprint": "dc5a84bacdd691e1",
+      "count": 1,
+      "reason": "a task marker that cannot be written leaves the gate closed"
+    }
+  ]
+}

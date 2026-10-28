@@ -56,7 +56,13 @@ jobs:
           ./packages/discipline/install.sh -h
           ./packages/bench/install.sh -h
 
+      - name: Install the duplicate-logic detector
+        run: npm ci --prefix packages/guardrails
+
       - name: Run guardrails tests
         working-directory: packages/guardrails
         run: bash tests/run.sh
+
+      - name: Simplicity guards
+        run: python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json
 
