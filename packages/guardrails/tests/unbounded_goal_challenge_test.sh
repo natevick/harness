@@ -127,6 +127,57 @@ check fire "until no more findings" "loop until no more findings"
 check fire "until you're satisfied" "loop until you're satisfied"
 check fire "keep going indefinitely" "keep going indefinitely"
 check fire "forever keeps its warning beside a cap" "repeat forever, max 5 rounds"
+check fire "forever beside five rounds" "repeat forever, five rounds"
+
+echo "── a count of rounds needs no max ──"
+check silent "3 rounds then report" "loop until clean, 3 rounds then report"
+check silent "3 iterations" "loop until clean, 3 iterations"
+check silent "4 attempts" "loop until clean, 4 attempts"
+check silent "at most 3 rounds" "loop until clean, at most 3 rounds"
+check silent "up to 2 iterations" "loop until clean, up to 2 iterations"
+check silent "at most twenty attempts" "loop until clean, at most twenty attempts"
+
+echo "── number words are caps ──"
+check silent "max five rounds" "loop until clean, max five rounds"
+check silent "ten minutes" "loop until clean, ten minutes"
+check silent "nineteen rounds" "loop until clean, nineteen rounds"
+check silent "sixty minutes" "loop until clean, sixty minutes"
+check silent "hundred tokens" "loop until clean, hundred tokens"
+check silent "one hour" "loop until clean, one hour"
+
+echo "── a severity floor or diminishing returns is a bound ──"
+check silent "nothing above medium" \
+  "loop until clean, stop when a round returns nothing above medium"
+check silent "nothing above critical" \
+  "loop until clean, stop when a round returns nothing above critical"
+check silent "previously known findings" \
+  "loop until clean, stop when a round's findings are all previously known"
+check silent "previously-known findings" \
+  "loop until clean, stop when a round's findings are all previously-known"
+check silent "below medium" "loop until clean, below medium"
+check silent "below low" "loop until clean, below low"
+
+echo "── every quoted bound in NOTE passes inside an until-sentence ──"
+pkg="$(cd "$(dirname "$0")/.." && pwd)"
+if ! bounds="$(python3 -c '
+import re, sys
+sys.path.insert(0, sys.argv[1])
+from guardrails.goals import NOTE
+found = re.findall(r"\"([^\"\n]+)\"", NOTE)
+if not found:
+    raise SystemExit(1)
+sys.stdout.write("\n".join(found))
+' "$pkg")"; then
+  fail=$((fail + 1))
+  printf '  FAIL %-58s extractor found no bounds\n' "NOTE quoted bounds"
+else
+  while IFS= read -r quote; do
+    [ -n "$quote" ] || continue
+    check silent "NOTE: $quote" "loop until clean, $quote"
+  done <<EOF
+$bounds
+EOF
+fi
 
 echo "── broken input must never take the turn down ──"
 survives() {

@@ -135,8 +135,12 @@ double quotes or backticks are removed before the sentence split, so a period in
 a citation is not a sentence break and cannot hide a cap or leak a quoted until-clause.
 An until-clause outside a citation stands only when that sentence has no checkable
 outcome and no cap. Checkable is a backtick
-command, test, CI, build, lint, exit status, or a failure count. A cap is "max N" rounds,
-iterations, or attempts, a time or token budget, or a number of minutes, hours, or tokens.
+command, test, CI, build, lint, exit status, or a failure count. A cap is N rounds,
+iterations, or attempts, with or without max, maximum, at most, or up to; a time or
+token budget; or N minutes, hours, seconds, or tokens. N is digits or a number word
+from one through twenty, plus thirty, forty, fifty, sixty, ninety, and hundred. A
+severity floor (nothing above low, medium, high, or critical) and a diminishing-returns
+rule (findings all previously known, or below one of those levels) are caps too.
 "until clean", "until nothing", "until no more findings", "until you're satisfied",
 "forever", and "indefinitely" still warn. "until the panel returns no findings" is the
 note's own example and did not match, because "no findings" is not "no more". It matches

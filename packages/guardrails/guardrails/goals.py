@@ -47,10 +47,22 @@ CHECKABLE = re.compile(
     re.I,
 )
 
+NUMBER_WORDS = (
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+    "sixty", "ninety", "hundred",
+)
+NUMBER = r"(?:\d+|" + "|".join(NUMBER_WORDS) + ")"
+LEVEL = r"(?:low|medium|high|critical)"
+
 CAP = re.compile(
-    r"\bmax(?:imum)?\s+\d+\s+(?:rounds?|iterations?|attempts?)\b"
+    r"\b(?:(?:max(?:imum)?|at most|up to)\s+)?" + NUMBER + r"\s+(?:rounds?|iterations?|attempts?)\b"
     r"|\b(?:time|token)\s+budget\b"
-    r"|\b\d+\s+(?:minutes?|hours?|seconds?|tokens?)\b",
+    r"|\b" + NUMBER + r"\s+(?:minutes?|hours?|seconds?|tokens?)\b"
+    r"|\bstop when a round returns nothing above " + LEVEL + r"\b"
+    r"|\bstop when a round's findings are all previously[- ]known\b"
+    r"|\bbelow " + LEVEL + r"\b",
     re.I,
 )
 
@@ -83,21 +95,22 @@ be reachable: it names {kind}. Before doing ANY of the work, do this in your fir
 response:
 
 1. Name the terminator you were given and say plainly whether it can be reached.
-   "Until the panel returns no findings" is NOT reachable on an adversarial process
+   Until the panel returns no findings is NOT reachable on an adversarial process
    — reviewers, fuzzers and scanners keep finding things, and each fix creates new
-   surface. Same for "until it's clean" or "until you're satisfied".
+   surface. Same for until it's clean or until you're satisfied.
 2. Propose a BOUNDED replacement and get agreement. Good shapes:
      - a round/iteration cap ("3 rounds, then report")
-     - a wall-clock or token budget
+     - a wall-clock or token budget ("token budget")
      - a severity floor ("stop when a round returns nothing above medium")
-     - a diminishing-returns rule ("stop when a round's findings are all
-       previously-known or below X")
+     - a diminishing-returns rule ("stop when a round's findings are all previously known" or "below medium")
 3. State what you will deliver when the bound is hit, including the case where
-   work is still outstanding. "I stopped at the cap with N items open" is a
+   work is still outstanding. I stopped at the cap with N items open is a
    legitimate and expected outcome — not a failure to be worked around.
 4. If a stop-time hook is enforcing the unbounded condition, say so explicitly: it
    will block stopping and push you into repeated one-more-action turns. The user
    must clear it; you cannot.
+
+Caps that count use digits or number words, for example "max 3 rounds", "five rounds", "10 minutes".
 
 Do not silently accept the unbounded form and start working. Raising the bound
 costs one exchange. Not raising it has cost a full session.
