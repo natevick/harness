@@ -1,0 +1,7 @@
+{
+  "name": "harness-guardrails",
+  "private": true,
+  "dependencies": {
+    "jscpd": "5.4.2"
+  }
+}

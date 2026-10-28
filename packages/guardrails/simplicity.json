@@ -1,0 +1,27 @@
+{
+  "duplicates": {
+    "enabled": true,
+    "paths": ["../.."],
+    "minLines": 5,
+    "minTokens": 50,
+    "baseline": "simplicity/duplicates-baseline.json",
+    "ignore": [
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/tests/fixtures/**",
+      "**/*.json",
+      "packages/bench/fixture/**",
+      "packages/bench/reference/**"
+    ]
+  },
+  "catchIgnore": {
+    "enabled": true,
+    "paths": ["../.."],
+    "baseline": "simplicity/catch-ignore-baseline.json",
+    "ignore": [
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/tests/fixtures/**"
+    ]
+  }
+}
