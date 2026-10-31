@@ -263,18 +263,40 @@ def engaged(cwd, session):
     return task_open(session) or os.path.isfile(done.locate(cwd))
 
 
-def check_start(cwd, session, paths, command=""):
+def spec_expected(cwd, session):
     from . import done
-    from .protected import format_block, installer_command, is_protected
+    from .live import note_spec, spec_seen
+
+    if os.path.isfile(done.locate(cwd)):
+        note_spec(session)
+        return True
+    if spec_seen(session) or task_open(session):
+        return True
+    if done.override_missing(cwd) or done.spec_removed(cwd):
+        return True
+    return False
+
+
+def stop_excused(text):
+    body = prose(text or "").strip()
+    if body.startswith("BLOCKED:"):
+        return True
+    return "?" in body
+
+
+def check_start(cwd, session, paths, command=""):
+    del command
+    from . import done
+    from .protected import format_block, is_protected
 
     protected_hits = []
     for path in paths or []:
         if is_protected(cwd, path) and path not in protected_hits:
             protected_hits.append(path)
-    if protected_hits and not installer_command(command):
+    if protected_hits:
         return deny(format_block(protected_hits))
     paths = [path for path in (paths or []) if not is_protected(cwd, path)]
-    if not paths or not engaged(cwd, session):
+    if not paths or not spec_expected(cwd, session):
         return PASS
     spec = done.locate(cwd)
     if all(done.allowed_write(cwd, path) for path in paths):
@@ -287,8 +309,13 @@ def check_start(cwd, session, paths, command=""):
 
 def check_stop(text, cwd, session=""):
     from . import done
+    from .live import hooks_live
 
-    if not claims_done(text) or not engaged(cwd, session):
+    if not spec_expected(cwd, session):
+        return PASS
+    if not hooks_live(session):
+        return deny("hooks not live for this session")
+    if stop_excused(text):
         return PASS
     problems, _data = done.finish_problems(cwd)
     if problems:

@@ -77,6 +77,8 @@ class Event:
         self.name = event_key(self.wire)
         self.tool = raw.get("tool_name") or ""
         self.fields = parse_tool_input(raw.get("tool_input"))
+        from guardrails.live import note_tool_event
+        note_tool_event(self.name, self.session)
 
     @property
     def session(self):

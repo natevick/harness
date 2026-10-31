@@ -3,33 +3,34 @@ begin_reviewer_fixture() {
   openssl pkey -in "$TMP/reviewer.pem" -pubout -out "$TMP/reviewer.pub"
   export REVIEW_PRIV="$TMP/reviewer.pem"
   export REVIEWER_ID="reviewer@example.com"
-  TRUST="$(python3 -c 'import os,pwd; print(os.path.join(pwd.getpwuid(os.geteuid()).pw_dir, ".harness", "reviewers.json"))')"
-  if [ -f "$TRUST" ]; then cp "$TRUST" "$TMP/trust-backup"; fi
-  mkdir -p "$(dirname "$TRUST")"
-  export TRUST
+  TRUST="$TMP/reviewers.json"
+  python3 - "$TRUST" "$TMP" <<'PY'
+import os, sys
+trust, tmp = sys.argv[1:]
+parent = os.path.realpath(os.path.dirname(os.path.abspath(trust)))
+root = os.path.realpath(tmp)
+if os.path.commonpath([parent, root]) != root:
+    raise SystemExit("fixture refuses to write a trust file outside TMP")
+if os.path.abspath(trust) in (
+    "/etc/harness/reviewers.json",
+    os.path.realpath(os.path.join(os.path.expanduser("~"), ".harness", "reviewers.json")),
+):
+    raise SystemExit("fixture refuses to touch the real trust path")
+PY
+  python3 "$ROOT/tests/review_sign.py" --trust "$TRUST" "$TMP/reviewer.pub" "$REVIEWER_ID"
+  mkdir -p "$GUARDRAILS_STATE_DIR"
+  : > "$GUARDRAILS_STATE_DIR/hook-live"
 }
 
 end_reviewer_fixture() {
-  if [ -f "$TMP/trust-backup" ]; then
-    cp "$TMP/trust-backup" "$TRUST"
-  else
-    rm -f "$TRUST"
-  fi
-}
-
-install_trust() {
-  python3 - "${2:-$TRUST}" "$TMP/reviewer.pub" "$1" <<'PY'
-import json, sys
-path, pub, reviewer = sys.argv[1:]
-json.dump({reviewer: open(pub).read()}, open(path, "w"))
-PY
+  return 0
 }
 
 ok() { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }
 
 cli() {
-  python3 "$CLI" "$@" >"$TMP/out" 2>"$TMP/err"
+  python3 "$ROOT/tests/invoke_done.py" "$TRUST" "$@" >"$TMP/out" 2>"$TMP/err"
 }
 
 shows() {

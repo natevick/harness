@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import subprocess
@@ -6,10 +5,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-def sign(spec, reviewer, private_key):
-    digest = hashlib.sha256(Path(spec).read_bytes()).hexdigest()
-    message = ("%s\n%s\n" % (digest, reviewer)).encode()
+from guardrails.done import canonical_review
+
+
+def sign_bytes(message, private_key):
     parent = tempfile.mkdtemp()
     try:
         message_path = os.path.join(parent, "msg")
@@ -22,7 +23,7 @@ def sign(spec, reviewer, private_key):
             ],
             stdout=subprocess.DEVNULL,
         )
-        return digest, Path(signature_path).read_bytes().hex()
+        return Path(signature_path).read_bytes().hex()
     finally:
         for name in ("msg", "sig"):
             path = os.path.join(parent, name)
@@ -33,22 +34,32 @@ def sign(spec, reviewer, private_key):
 
 def write_review(spec, reviewer, private_key, verdict):
     ok = verdict == "pass"
-    digest, signature = sign(spec, reviewer, private_key)
     document = {
         "gaps": [] if ok else ["final state is not observable"],
         "observable": ok,
         "testable": ok,
         "scoped": ok,
         "stopping_point": ok,
-        "spec_sha256": digest,
+        "spec_sha256": __import__("hashlib").sha256(Path(spec).read_bytes()).hexdigest(),
         "reviewer": reviewer,
-        "signature": signature,
     }
+    document["signature"] = sign_bytes(canonical_review(document), private_key)
     Path(os.path.splitext(spec)[0] + ".review.json").write_text(json.dumps(document))
-    return digest
+    return document["spec_sha256"]
+
+
+def write_trust(path, reviewer, public_pem_path):
+    pem = Path(public_pem_path).read_text()
+    Path(path).write_text(json.dumps({reviewer: pem}))
 
 
 def main(argv):
+    if len(argv) >= 2 and argv[1] == "--trust":
+        if len(argv) != 5:
+            print("usage: review_sign.py --trust <path> <public-pem> <reviewer>", file=sys.stderr)
+            return 2
+        write_trust(argv[2], argv[4], argv[3])
+        return 0
     if len(argv) != 5:
         print("usage: review_sign.py <spec> <reviewer> <private-key> <pass|fail>", file=sys.stderr)
         return 2

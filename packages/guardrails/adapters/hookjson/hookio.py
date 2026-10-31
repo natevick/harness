@@ -110,6 +110,8 @@ class Event:
         self.fields = self.data.get("tool_input") or {}
         if not isinstance(self.fields, dict):
             self.fields = {}
+        from guardrails.live import note_tool_event
+        note_tool_event(self.name, self.session)
 
     @property
     def session(self):

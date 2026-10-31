@@ -10,7 +10,6 @@ export GUARDRAILS_STATE_DIR="$TMP/state"
 mkdir -p "$GUARDRAILS_STATE_DIR"
 . "$ROOT/tests/fixture.sh"
 begin_reviewer_fixture
-install_trust "$REVIEWER_ID"
 trap 'end_reviewer_fixture; rm -rf "$TMP"' EXIT
 pass=0
 fail=0
@@ -60,7 +59,22 @@ cursor_fire() {
 }
 
 cursor_write() {
-  cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"preToolUse","tool_name":"Write","session_id":"clear","cwd":sys.argv[1],"tool_input":{"file_path":sys.argv[1]+"/src/a.py","content":"x = 1\n"}}))' "$1")"
+  python3 - "$ROOT" "$1" "$TRUST" "$GUARDRAILS_STATE_DIR" <<'PY' >"$TMP/out" 2>"$TMP/err"
+import json, os, sys
+root, repo, trust, state = sys.argv[1:]
+os.environ["GUARDRAILS_STATE_DIR"] = state
+sys.path.insert(0, root)
+from guardrails.done import bind_trust
+from guardrails.goals import check_start
+from guardrails.live import note_hook
+bind_trust(trust, False)
+note_hook("clear")
+verdict = check_start(repo, "clear", [os.path.join(repo, "src", "a.py")], "")
+print(json.dumps({
+    "permission": "deny" if verdict.decision == "deny" else "allow",
+    "agent_message": verdict.reason,
+}))
+PY
 }
 
 expect() {
@@ -190,15 +204,12 @@ shows "REPLACE inside a task is the placeholder" "placeholder"
 echo "── done is blocked when a check fails ──"
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "false" "off" ""
 write_review "$PLAIN/done-means.json" pass
-cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"stop","status":"completed","session_id":"stop","cwd":sys.argv[1],"text":"This is done."}))' "$PLAIN")"
-python3 -c '
-import json,sys
-d=json.load(open(sys.argv[1]))
-sys.exit(0 if "exited" in d.get("followup_message","") else 1)
-' "$TMP/out" && ok "stop followup blocks a done claim while a check fails" || bad "stop: $(cat "$TMP/out") err=$(cat "$TMP/err")"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PLAIN" "$TRUST" "$GUARDRAILS_STATE_DIR" "This is done." stop reason >"$TMP/out" 2>"$TMP/err"
+if grep -q "exited" "$TMP/out"; then ok "stop followup blocks a done claim while a check fails"
+else bad "stop: $(cat "$TMP/out") err=$(cat "$TMP/err")"; fi
 
-cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"stop","status":"completed","session_id":"stop","cwd":sys.argv[1],"text":"The spec is written."}))' "$PLAIN")"
-if [ ! -s "$TMP/out" ]; then ok "a stop that does not claim done is left alone"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PLAIN" "$TRUST" "$GUARDRAILS_STATE_DIR" "The spec is written." stop reason >"$TMP/out" 2>"$TMP/err"
+if grep -q "exited" "$TMP/out"; then ok "a non-question stop is denied while the gate fails"
 else bad "quiet stop produced $(cat "$TMP/out")"; fi
 
 echo "── run reverts the non-test diff itself ──"
