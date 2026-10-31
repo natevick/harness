@@ -137,7 +137,7 @@ pass/fail summary — a suite that reports nothing because it ran nothing.
 | `GUARDRAILS_COMMITMENT_MECHANISMS` | `crontab,cron,scheduled,/loop` | comma-separated names that count as a mechanism |
 | `GUARDRAILS_COMMAND_WRAPPERS` | empty | wrapper commands to look through before `gh`/`git` |
 | `GUARDRAILS_NOTIFY_COMMANDS` | empty | commands whose `--notify` text is budgeted |
-| `GUARDRAILS_DONE_MEANS` | `done-means.json` in the work tree | `off` stands the gate down; any other value is the spec path |
+| `GUARDRAILS_DONE_MEANS` | `done-means.json` in the work tree | `off` does not stand the gate down; any other value is the spec path |
 | `GUARDRAILS_DONE_BASE` | `origin/main`, else `main`, else `HEAD` | git rev for path diffs and the revert |
 
 `decisions.jsonl` stores a truncated SHA-256 of the command, not the command; state files are 0600

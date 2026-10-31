@@ -8,22 +8,12 @@ HOOK="$ROOT/adapters/hookjson"
 TMP="$(mktemp -d)"
 export GUARDRAILS_STATE_DIR="$TMP/state"
 mkdir -p "$GUARDRAILS_STATE_DIR"
-trap 'rm -rf "$TMP"' EXIT
+. "$ROOT/tests/fixture.sh"
+begin_reviewer_fixture
+install_trust "$REVIEWER_ID"
+trap 'end_reviewer_fixture; rm -rf "$TMP"' EXIT
 pass=0
 fail=0
-
-ok() { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
-bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }
-
-cli() {
-  python3 "$CLI" "$@" >"$TMP/out" 2>"$TMP/err"
-}
-
-shows() {
-  local name="$1" needle="$2"
-  if grep -q "$needle" "$TMP/out"; then ok "$name"
-  else bad "$name (missing $needle) $(cat "$TMP/out")"; fi
-}
 
 write_spec() {
   python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
@@ -47,20 +37,7 @@ PY
 }
 
 write_review() {
-  python3 - "$1" "$2" <<'PY'
-import hashlib, json, sys
-spec, verdict = sys.argv[1:]
-ok = verdict == "pass"
-digest = hashlib.sha256(open(spec, "rb").read()).hexdigest()
-json.dump({
-    "gaps": [] if ok else ["final state is not observable"],
-    "observable": ok,
-    "testable": ok,
-    "scoped": ok,
-    "stopping_point": ok,
-    "spec_sha256": digest,
-}, open(spec.replace(".json", ".review.json"), "w"))
-PY
+  python3 "$ROOT/tests/review_sign.py" "$1" "$REVIEWER_ID" "$REVIEW_PRIV" "$2"
 }
 
 plant() {

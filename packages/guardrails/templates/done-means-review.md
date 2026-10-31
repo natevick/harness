@@ -20,8 +20,12 @@ All four booleans must be true and `gaps` must be empty. A false flag or a gap b
   "testable": true,
   "scoped": true,
   "stopping_point": true,
-  "spec_sha256": "<sha256 of the spec bytes>"
+  "spec_sha256": "<sha256 of the spec bytes>",
+  "reviewer": "<id in ~/.harness/reviewers.json, different from the spec author>",
+  "signature": "<hex Ed25519 signature of spec_sha256, a newline, reviewer, and a newline>"
 }
 ```
+
+Sign with the reviewer's private key. That key is not on the agent machine. `GUARDRAILS_REVIEWERS` is not a path the guard reads.
 
 The spec's `human` list is unenforced. Do not treat it as a check, and do not move a machine-checkable outcome into it to avoid the validator.

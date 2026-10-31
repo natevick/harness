@@ -31,7 +31,9 @@ def main():
     paths = paths_for(event)
     if not paths:
         return 0
-    return hookio.decide(event, "goals", goals.check_start(event.cwd, event.session, paths))
+    return hookio.decide(
+        event, "goals", goals.check_start(event.cwd, event.session, paths, event.command)
+    )
 
 
 if __name__ == "__main__":

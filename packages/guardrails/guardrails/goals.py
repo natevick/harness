@@ -81,9 +81,12 @@ WORK = re.compile(
 )
 
 DONE_CLAIM = re.compile(
-    r"(?:^|\n)\s*done[.!]?\s*(?:\n|$)"
+    r"(?:^|\n)\s*done[.!]?(?=\s*(?:\n|$))"
+    r"|(?:^|\n)\s*finished\b"
     r"|\b(?:this is done|task is done|work is done|ready for review|ready to merge|"
-    r"all checks pass|i am done|i(?:'|’)m done)\b",
+    r"all checks pass|i am done|i(?:'|’)m done|all done|everything is done|"
+    r"this is finished|task is finished|work is finished|all finished|"
+    r"i am finished|i(?:'|’)m finished|everything is finished)\b",
     re.I,
 )
 
@@ -229,10 +232,13 @@ def task_open(session):
 
 
 def shell_paths(command, cwd):
+    from .protected import command_targets
+
     writes, patches = bash_units(command or "")
     paths = [resolve(target, cwd or "") for target, _text, _append in writes]
     for patch in patches:
         paths.extend(unit[0] for unit in patch_units(patch, cwd))
+    paths.extend(command_targets(command, cwd or ""))
     return paths
 
 
@@ -257,13 +263,21 @@ def engaged(cwd, session):
     return task_open(session) or os.path.isfile(done.locate(cwd))
 
 
-def check_start(cwd, session, paths):
+def check_start(cwd, session, paths, command=""):
     from . import done
+    from .protected import format_block, installer_command, is_protected
 
-    if done.stood_down() or not engaged(cwd, session):
+    protected_hits = []
+    for path in paths or []:
+        if is_protected(cwd, path) and path not in protected_hits:
+            protected_hits.append(path)
+    if protected_hits and not installer_command(command):
+        return deny(format_block(protected_hits))
+    paths = [path for path in (paths or []) if not is_protected(cwd, path)]
+    if not paths or not engaged(cwd, session):
         return PASS
     spec = done.locate(cwd)
-    if paths and all(done.allowed_write(cwd, path) for path in paths):
+    if all(done.allowed_write(cwd, path) for path in paths):
         return PASS
     problems, _data = done.start_problems(cwd, spec)
     if problems:
@@ -274,7 +288,7 @@ def check_start(cwd, session, paths):
 def check_stop(text, cwd, session=""):
     from . import done
 
-    if done.stood_down() or not claims_done(text) or not engaged(cwd, session):
+    if not claims_done(text) or not engaged(cwd, session):
         return PASS
     problems, _data = done.finish_problems(cwd)
     if problems:

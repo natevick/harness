@@ -28,7 +28,9 @@ def main():
     paths = paths_for(event)
     if not paths:
         return cursorio.allow(event)
-    return cursorio.decide(event, "goals", goals.check_start(event.cwd, event.session, paths))
+    return cursorio.decide(
+        event, "goals", goals.check_start(event.cwd, event.session, paths, event.command)
+    )
 
 
 if __name__ == "__main__":

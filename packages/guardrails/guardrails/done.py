@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -8,17 +9,14 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from .goals import vague_clause, vague_prompt
+from .protected import is_protected, trust_path
 
-KEYS = {"task", "done", "checks", "paths", "human", "tests"}
+KEYS = {"task", "done", "checks", "paths", "human", "tests", "author"}
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
 TEST_NAMES = ("test_*", "spec_*", "*_test", "*.test.*", "*.spec.*", "*_test.*", "*_spec.*")
-
-
-def stood_down():
-    return os.environ.get("GUARDRAILS_DONE_MEANS") == "off"
 
 
 def locate(cwd):
@@ -73,6 +71,8 @@ def missing_problems(spec):
             root / "templates" / "done-means-review.md",
         ),
         "set spec_sha256 from: python3 %s hash %s" % (root / "done_means.py", spec),
+        "set reviewer to an id in %s and signature to the ed25519 signature of '<sha256>\\n<reviewer>\\n'" % trust_path(),
+        "reviewer must differ from author; the private key must not be on this machine",
         "a review with a false flag or a gap blocks; human entries are not checked",
     ]
 
@@ -143,6 +143,10 @@ def schema_problems(data):
         string_list(data.get("human"), "human", problems)
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
+    if "author" in data:
+        reason = text_problem("author", data.get("author"), vague_clause)
+        if reason:
+            problems.append(reason)
 
     if runnable == 0 and not must_change:
         problems.append("no runnable check")
@@ -165,7 +169,7 @@ def review_problems(spec):
         return ["review at %s is not a JSON object" % path]
 
     problems = []
-    for key in ("gaps", "spec_sha256") + REVIEW_FLAGS:
+    for key in ("gaps", "spec_sha256", "reviewer", "signature") + REVIEW_FLAGS:
         if key not in data:
             problems.append("review missing %s" % key)
     if problems:
@@ -181,7 +185,82 @@ def review_problems(spec):
             problems.append("review failed: %s is not true" % flag)
     if gaps:
         problems.append("review failed: %s" % "; ".join(gaps))
+    problems.extend(identity_problems(spec, data))
     return problems
+
+
+def review_message(spec_digest, reviewer):
+    return ("%s\n%s\n" % (spec_digest, reviewer)).encode()
+
+
+def load_trust():
+    path = trust_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    clean = {}
+    for key, value in data.items():
+        if isinstance(key, str) and isinstance(value, str) and value.strip():
+            clean[key] = value
+    return clean
+
+
+def signature_ok(public_pem, message, signature_hex):
+    try:
+        signature = bytes.fromhex(signature_hex.strip())
+    except ValueError:
+        return False
+    parent = tempfile.mkdtemp(prefix="done-means-sig-")
+    try:
+        public_path = os.path.join(parent, "pub.pem")
+        message_path = os.path.join(parent, "msg")
+        signature_path = os.path.join(parent, "sig")
+        pem = public_pem if public_pem.endswith("\n") else public_pem + "\n"
+        Path(public_path).write_text(pem)
+        Path(message_path).write_bytes(message)
+        Path(signature_path).write_bytes(signature)
+        verified = subprocess.run(
+            [
+                "openssl", "pkeyutl", "-verify", "-pubin", "-inkey", public_path,
+                "-rawin", "-in", message_path, "-sigfile", signature_path,
+            ],
+            capture_output=True,
+        )
+        return verified.returncode == 0
+    except OSError:
+        return False
+    finally:
+        shutil.rmtree(parent, ignore_errors=True)
+
+
+def identity_problems(spec, data):
+    spec_data = load(spec)
+    author = ""
+    if isinstance(spec_data, dict) and isinstance(spec_data.get("author"), str):
+        author = spec_data["author"].strip()
+    reviewer = data.get("reviewer")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        return ["review missing reviewer"]
+    reviewer = reviewer.strip()
+    if author and reviewer == author:
+        return ["reviewer matches the spec author"]
+    signature = data.get("signature")
+    if not isinstance(signature, str) or not signature.strip():
+        return ["review missing signature"]
+    trust = load_trust()
+    if trust is None:
+        return ["no reviewer trust store at %s" % trust_path()]
+    pem = trust.get(reviewer)
+    if not pem:
+        return ["reviewer %s is not in the trust store" % reviewer]
+    if not signature_ok(pem, review_message(spec_hash(spec), reviewer), signature):
+        return ["review signature is not valid"]
+    return []
 
 
 def matches(pattern, path):
@@ -205,18 +284,22 @@ def default_base(cwd):
     return "HEAD"
 
 
-def changed_paths(cwd, base):
+def changed_paths(cwd, base, untracked=True):
     collected = set()
     head = subprocess.run(
         ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"],
         capture_output=True,
     )
-    commands = [["git", "-C", cwd, "ls-files", "--others", "--exclude-standard"]]
+    commands = []
     if head.returncode == 0:
         commands = [
             ["git", "-C", cwd, "diff", "--name-only", "%s...HEAD" % base],
             ["git", "-C", cwd, "diff", "--name-only", "HEAD"],
-        ] + commands
+        ]
+    if untracked:
+        commands.append(["git", "-C", cwd, "ls-files", "--others", "--exclude-standard"])
+    if not commands:
+        return set(), ""
     for command in commands:
         probe = subprocess.run(command, capture_output=True, text=True)
         if probe.returncode != 0:
@@ -247,9 +330,53 @@ def path_problems(cwd, data):
     return problems
 
 
+def run_result(command, cwd):
+    completed = subprocess.run(
+        command,
+        shell=True,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    return completed.returncode, (completed.stdout or "") + (completed.stderr or "")
+
+
 def run_exit(command, cwd):
-    completed = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
-    return completed.returncode
+    code, _output = run_result(command, cwd)
+    return code
+
+
+CRASH = re.compile(
+    r"ImportError|ModuleNotFoundError|SyntaxError|IndentationError|FileNotFoundError|"
+    r"No such file or directory|command not found|Traceback \(most recent call last\)"
+)
+ASSERTION = re.compile(r"AssertionError|^\s*E\s+assert\s+", re.I | re.M)
+DOC_BASENAMES = {
+    "changelog", "changelog.md", "changelog.rst", "license", "licence", "copying",
+    "readme", "readme.md", "readme.rst", "version", "version.txt",
+}
+
+
+def assertion_red(code, output):
+    if code == 0:
+        return False
+    text = output or ""
+    if ASSERTION.search(text):
+        return True
+    if CRASH.search(text):
+        return False
+    return True
+
+
+def is_doc_path(path):
+    parts = path.replace("\\", "/").split("/")
+    base = parts[-1].lower() if parts else ""
+    if base in DOC_BASENAMES or base.startswith("changelog"):
+        return True
+    if base.endswith((".md", ".markdown", ".rst")):
+        return True
+    return bool(parts) and parts[0].lower() in {"doc", "docs"}
 
 
 def command_problems(cwd, data):
@@ -285,7 +412,7 @@ def split_changes(cwd, spec, data):
     meta = meta_paths(cwd, spec)
     tests, product = [], []
     for path in sorted(changed):
-        if path in meta:
+        if path in meta or is_protected(cwd, path):
             continue
         if is_test_path(path, patterns):
             tests.append(path)
@@ -381,10 +508,10 @@ def cycle(cwd, product, base, checks):
             current = Path(full).read_bytes() if os.path.isfile(full) else None
             saved.append((full, current))
             put(full, git_bytes(cwd, base, rel))
-        reds = [run_exit(check["run"], tree) for check in checks]
+        reds = [run_result(check["run"], tree) for check in checks]
         for full, current in saved:
             put(full, current)
-        greens = [run_exit(check["run"], tree) for check in checks]
+        greens = [run_result(check["run"], tree) for check in checks]
         return reds, greens
     finally:
         if linked:
@@ -401,9 +528,12 @@ def sabotage_problems(spec, cwd, data):
     if split is None:
         return ["sabotage: %s" % error] if explicit else []
     base, tests, product = split
+    code = [path for path in product if not is_doc_path(path)]
+    checks = sabotage_checks(data)
+    if code and not tests and checks:
+        return ["sabotage: non-doc change has no test diff (%s)" % ", ".join(code)]
     if not tests and not explicit:
         return []
-    checks = sabotage_checks(data)
     if not checks:
         return ["sabotage: changed tests have no check to run"]
     if not product:
@@ -413,18 +543,41 @@ def sabotage_problems(spec, cwd, data):
     except OSError as error:
         return ["sabotage: could not stage a copy: %s" % error]
     problems = []
+    reverted = ", ".join(product)
     for check, red, green in zip(checks, reds, greens):
-        if red == 0:
+        red_code, red_out = red
+        green_code, _green_out = green
+        if red_code == 0:
             problems.append(
-                "sabotage: check %s still passed after reverting %s" % (check["id"], ", ".join(product))
+                "sabotage: check %s still passed after reverting %s" % (check["id"], reverted)
             )
-        if green != 0:
-            problems.append("sabotage: check %s failed after restore (exit %s)" % (check["id"], green))
+        elif not assertion_red(red_code, red_out):
+            problems.append(
+                "sabotage: check %s failed by crash or import, not an assertion, after reverting %s"
+                % (check["id"], reverted)
+            )
+        if green_code != 0:
+            problems.append("sabotage: check %s failed after restore (exit %s)" % (check["id"], green_code))
     return problems
 
 
+def protected_problems(cwd):
+    found, error = changed_paths(cwd, default_base(cwd), untracked=False)
+    if found is None:
+        return ["protected: %s" % error]
+    hits = [path for path in sorted(found) if is_protected(cwd, path)]
+    if not hits:
+        return []
+    return ["protected: %s changed" % ", ".join(hits)]
+
+
 def execute(spec, cwd, data):
-    return command_problems(cwd, data) + path_problems(cwd, data) + sabotage_problems(spec, cwd, data)
+    return (
+        command_problems(cwd, data)
+        + path_problems(cwd, data)
+        + protected_problems(cwd)
+        + sabotage_problems(spec, cwd, data)
+    )
 
 
 def spec_problems(spec):
