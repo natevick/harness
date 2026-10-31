@@ -17,6 +17,10 @@ from .protected import is_protected
 KEYS = {"task", "done", "checks", "paths", "human", "tests", "author", "base"}
 _TRUST = None
 _ENFORCE = True
+_REQUIRE_LIVE = True
+_SESSION = ""
+_CI_BASE = ""
+SHA = re.compile(r"^[0-9a-f]{40}$")
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
@@ -31,9 +35,23 @@ def bind_trust(path, enforce_ownership=True):
 
 
 def release_trust():
-    global _TRUST, _ENFORCE
+    global _TRUST, _ENFORCE, _REQUIRE_LIVE, _SESSION, _CI_BASE
     _TRUST = None
     _ENFORCE = True
+    _REQUIRE_LIVE = True
+    _SESSION = ""
+    _CI_BASE = ""
+
+
+def configure(trust=None, enforce_ownership=True, require_live=True, session=None, ci_base_ref=""):
+    global _REQUIRE_LIVE, _SESSION, _CI_BASE
+    if trust is None:
+        release_trust()
+    else:
+        bind_trust(trust, enforce_ownership)
+    _REQUIRE_LIVE = bool(require_live)
+    _SESSION = session if session is not None else os.environ.get("GUARDRAILS_SESSION", "")
+    _CI_BASE = ci_base_ref or ""
 
 
 def active_trust_path():
@@ -170,8 +188,9 @@ def schema_problems(data):
         reason = text_problem("author", data.get("author"), vague_clause)
         if reason:
             problems.append(reason)
-    if "base" in data and (not isinstance(data.get("base"), str) or not data.get("base").strip()):
-        problems.append("base is missing")
+    base = data.get("base")
+    if not isinstance(base, str) or not SHA.match(base.strip().lower()):
+        problems.append("base must be a 40-character hex SHA")
 
     if runnable == 0 and not must_change:
         problems.append("no runnable check")
@@ -264,7 +283,7 @@ def signature_ok(public_pem, message, signature_hex):
         shutil.rmtree(parent, ignore_errors=True)
 
 
-def trust_writable(path):
+def _walk_writable(path):
     uid = os.geteuid()
     current = path
     seen = set()
@@ -274,16 +293,24 @@ def trust_writable(path):
             info = os.stat(current)
         except OSError:
             return True
-        if info.st_uid == uid:
+        if info.st_uid == uid or os.access(current, os.W_OK):
             return True
-        if os.access(current, os.W_OK):
-            return True
-        if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             return True
         parent = os.path.dirname(current)
         if parent == current:
             break
         current = parent
+    return False
+
+
+def trust_writable(path):
+    try:
+        real = os.path.realpath(path)
+    except OSError:
+        return True
+    if _walk_writable(path) or (real != path and _walk_writable(real)):
+        return True
     return False
 
 
@@ -318,33 +345,36 @@ def matches(pattern, path):
     return fnmatch(path, pattern) or fnmatch(os.path.basename(path), pattern)
 
 
-def default_base(cwd, data=None):
-    if isinstance(data, dict):
-        pinned = data.get("base")
-        if isinstance(pinned, str) and pinned.strip():
-            return pinned.strip()
-    head = subprocess.run(
-        ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"],
-        capture_output=True,
-        text=True,
-    )
-    for candidate in ("origin/main", "main"):
-        probe = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", candidate],
+def resolve_base(cwd, data):
+    raw = data.get("base") if isinstance(data, dict) else ""
+    base = raw.strip().lower() if isinstance(raw, str) else ""
+    if not SHA.match(base):
+        return None, "base must be a 40-character hex SHA"
+    if _CI_BASE:
+        ref = "origin/%s" % _CI_BASE
+        merged = subprocess.run(
+            ["git", "-C", cwd, "merge-base", ref, "HEAD"],
             capture_output=True,
+            text=True,
         )
-        if probe.returncode != 0:
-            continue
-        if head.returncode == 0:
-            merged = subprocess.run(
-                ["git", "-C", cwd, "merge-base", "HEAD", candidate],
-                capture_output=True,
-                text=True,
-            )
-            if merged.returncode == 0 and merged.stdout.strip():
-                return merged.stdout.strip()
-        return candidate
-    return "HEAD"
+        if merged.returncode != 0:
+            return None, "base: cannot merge-base %s with HEAD" % ref
+        expected = merged.stdout.strip()
+        if base != expected:
+            return None, "base is not the merge-base with %s" % ref
+        return base, ""
+    ancestor = subprocess.run(
+        ["git", "-C", cwd, "merge-base", "--is-ancestor", base, "HEAD"],
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        return None, "base is not an ancestor of HEAD"
+    return base, ""
+
+
+def default_base(cwd, data=None):
+    base, _error = resolve_base(cwd, data or {})
+    return base or ""
 
 
 def override_missing(cwd):
@@ -358,14 +388,39 @@ def spec_removed(cwd):
     name = os.path.basename(locate(cwd))
     if os.path.isfile(os.path.join(cwd or ".", name)):
         return False
-    for rev in ("HEAD", default_base(cwd)):
-        probe = subprocess.run(
-            ["git", "-C", cwd, "cat-file", "-e", "%s:%s" % (rev, name)],
-            capture_output=True,
-        )
-        if probe.returncode == 0:
-            return True
-    return False
+    present = subprocess.run(
+        ["git", "-C", cwd, "cat-file", "-e", "HEAD:%s" % name],
+        capture_output=True,
+    )
+    if present.returncode == 0:
+        return True
+    deleted = subprocess.run(
+        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "-n", "1", "--", name],
+        capture_output=True,
+        text=True,
+    )
+    if deleted.returncode != 0 or not deleted.stdout.strip():
+        return False
+    commit = deleted.stdout.strip().splitlines()[0]
+    shown = subprocess.run(
+        ["git", "-C", cwd, "show", "%s^:%s" % (commit, name)],
+        capture_output=True,
+    )
+    if shown.returncode != 0:
+        return False
+    try:
+        data = json.loads(shown.stdout.decode())
+    except ValueError:
+        return False
+    base = data.get("base") if isinstance(data, dict) else ""
+    if not isinstance(base, str) or not SHA.match(base.strip().lower()):
+        return False
+    log = subprocess.run(
+        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "%s..HEAD" % base.strip().lower(), "--", name],
+        capture_output=True,
+        text=True,
+    )
+    return log.returncode == 0 and bool(log.stdout.strip())
 
 
 def changed_paths(cwd, base, untracked=True):
@@ -431,29 +486,33 @@ def run_exit(command, cwd):
     return code
 
 
-CRASH = re.compile(
-    r"ImportError|ModuleNotFoundError|SyntaxError|IndentationError|FileNotFoundError|"
-    r"AttributeError|NameError|"
-    r"No such file or directory|command not found|Traceback \(most recent call last\)|"
-    r"^\s*E\s+(?!AssertionError)\w+(?:Error|Exception)\b",
-    re.M,
-)
-ASSERTION = re.compile(r"AssertionError|^\s*E\s+assert\s+", re.M)
 DOC_BASENAMES = {
     "changelog", "changelog.md", "changelog.rst", "license", "licence", "copying",
     "readme", "readme.md", "readme.rst", "version", "version.txt",
 }
 
 
+def final_exception(output):
+    found = None
+    for line in (output or "").splitlines():
+        stripped = line.strip()
+        marked = re.match(r"^E\s+([A-Za-z_]\w*)", stripped)
+        if marked:
+            found = marked.group(1)
+            continue
+        plain = re.match(r"^([A-Za-z_]\w*(?:Error|Exception))\b", stripped)
+        if plain:
+            found = plain.group(1)
+    return found
+
+
 def assertion_red(code, output):
     if code == 0:
         return False
-    text = output or ""
-    if ASSERTION.search(text):
+    kind = final_exception(output)
+    if kind is None:
         return True
-    if CRASH.search(text):
-        return False
-    return True
+    return kind == "AssertionError"
 
 
 def is_doc_path(path):
@@ -472,7 +531,9 @@ def is_noise_path(path):
     parts = path.replace("\\", "/").split("/")
     if "__pycache__" in parts:
         return True
-    return bool(parts) and parts[-1].endswith(".pyc")
+    if parts and parts[-1].endswith(".pyc"):
+        return True
+    return bool(parts) and parts[-1] == "done-means.sabotage.json"
 
 
 def command_problems(cwd, data):
@@ -592,38 +653,50 @@ def fill_tree(cwd, tree):
     return False
 
 
-def stub_python(content):
+def _function_nodes(tree):
+    found = {}
+    for node in getattr(tree, "body", []):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            found[node.name] = node
+        elif isinstance(node, ast.ClassDef):
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    found["%s.%s" % (node.name, item.name)] = item
+    return found
+
+
+def _stub_function(node):
+    node.body = [ast.Return(value=ast.Name(id="_SABOTAGE", ctx=ast.Load()))]
+    node.decorator_list = []
+    return node
+
+
+def stub_python_sources(current, base_bytes):
     try:
-        text = content.decode("utf-8")
-        tree = ast.parse(text)
+        current_tree = ast.parse(current.decode("utf-8"))
     except (UnicodeError, SyntaxError, ValueError):
-        return b"raise RuntimeError('sabotage stub')\n"
-
-    class Stub(ast.NodeTransformer):
-        def visit_FunctionDef(self, node):
-            node.body = [ast.Return(value=ast.Constant(value=None))]
-            node.decorator_list = []
-            return node
-
-        visit_AsyncFunctionDef = visit_FunctionDef
-
-        def visit_Lambda(self, node):
-            return ast.copy_location(
-                ast.Lambda(args=node.args, body=ast.Constant(value=None)),
-                node,
-            )
-
-    rewritten = ast.fix_missing_locations(Stub().visit(tree))
+        return None
+    base_dump = {}
+    if base_bytes is not None:
+        try:
+            base_dump = {
+                name: ast.dump(node)
+                for name, node in _function_nodes(ast.parse(base_bytes.decode("utf-8"))).items()
+            }
+        except (UnicodeError, SyntaxError, ValueError):
+            base_dump = {}
+    changed = False
+    for name, node in _function_nodes(current_tree).items():
+        if base_bytes is None or ast.dump(node) != base_dump.get(name):
+            _stub_function(node)
+            changed = True
+    if not changed:
+        return current
+    current_tree.body.insert(0, ast.parse("_SABOTAGE = object()").body[0])
     try:
-        return ast.unparse(rewritten).encode()
+        return ast.unparse(ast.fix_missing_locations(current_tree)).encode()
     except (ValueError, TypeError):
-        return b"raise RuntimeError('sabotage stub')\n"
-
-
-def stub_new(rel, content):
-    if rel.endswith(".py"):
-        return stub_python(content)
-    return content
+        return None
 
 
 def cycle(cwd, product, base, checks):
@@ -638,8 +711,8 @@ def cycle(cwd, product, base, checks):
             current = Path(full).read_bytes() if os.path.isfile(full) else None
             saved.append((full, current))
             base_bytes = git_bytes(cwd, base, rel)
-            if base_bytes is None and current is not None:
-                put(full, stub_new(rel, current))
+            if rel.endswith(".py") and current is not None:
+                put(full, stub_python_sources(current, base_bytes) or current)
             else:
                 put(full, base_bytes)
         reds = [run_result(check["run"], tree) for check in checks]
@@ -672,6 +745,14 @@ def sabotage_problems(spec, cwd, data):
         return ["sabotage: changed tests have no check to run"]
     if not product:
         return ["sabotage: no non-test diff to revert"]
+    unstubbable = [
+        path for path in product
+        if not path.endswith(".py") and git_bytes(cwd, base, path) is None
+    ]
+    if unstubbable:
+        return [
+            "sabotage: cannot mutate %s; set sabotage false with a reason" % ", ".join(unstubbable)
+        ]
     try:
         reds, greens = cycle(cwd, product, base, checks)
     except OSError as error:
@@ -706,6 +787,9 @@ def protected_problems(cwd, data=None):
 
 
 def execute(spec, cwd, data):
+    _base, error = resolve_base(cwd, data)
+    if error:
+        return [error]
     return (
         command_problems(cwd, data)
         + path_problems(cwd, data)
@@ -729,10 +813,11 @@ def start_problems(cwd, spec=None):
     return problems or review_problems(spec), data
 
 
-def finish_problems(cwd, spec=None):
+def finish_problems(cwd, spec=None, session=None):
     spec = spec or locate(cwd)
+    who = _SESSION if session is None else session
     problems, data = spec_problems(spec)
-    if not hooks_live(""):
+    if _REQUIRE_LIVE and not hooks_live(who):
         return ["hooks not live for this session"], data
     if problems:
         return problems, data
@@ -764,16 +849,17 @@ hash       print the spec sha256 a review must cite
 """
 
 
-def main(argv, trust=None, enforce_ownership=True):
-    if trust is None:
-        release_trust()
-    else:
-        bind_trust(trust, enforce_ownership)
+def main(argv, trust=None, enforce_ownership=True, require_live=True, ci_base_ref=""):
+    configure(
+        trust=trust,
+        enforce_ownership=enforce_ownership,
+        require_live=require_live,
+        ci_base_ref=ci_base_ref,
+    )
     try:
         return _main(argv)
     finally:
-        if trust is not None:
-            release_trust()
+        release_trust()
 
 
 def _main(argv):

@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 import sys
@@ -7,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from guardrails.done import canonical_review, signature_ok
+from guardrails.done import canonical_review, main, signature_ok
 
 
 def self_test():
@@ -42,7 +41,10 @@ def self_test():
     signature_path = os.path.join(parent, "s")
     Path(message_path).write_bytes(message)
     signed = subprocess.run(
-        ["openssl", "pkeyutl", "-sign", "-inkey", private_key, "-rawin", "-in", message_path, "-out", signature_path],
+        [
+            "openssl", "pkeyutl", "-sign", "-inkey", private_key,
+            "-rawin", "-in", message_path, "-out", signature_path,
+        ],
         capture_output=True,
     )
     if signed.returncode != 0:
@@ -61,45 +63,51 @@ def self_test():
     return 0
 
 
-def verify_repo():
-    secret = os.environ.get("HARNESS_REVIEWERS_JSON") or ""
-    if not secret.strip():
+def verify_worktree(worktree, trust_json, base_ref=""):
+    if not (trust_json or "").strip():
         print(
             "HARNESS_REVIEWERS_JSON secret is required. "
-            "On a VM where the agent has root, only this CI identity can verify the review."
+            "On a host where the agent is root or has passwordless sudo, this CI identity is the binding check."
         )
         return 1
-    try:
-        trust = json.loads(secret)
-    except ValueError:
-        print("HARNESS_REVIEWERS_JSON is not JSON")
+    spec = os.path.join(worktree, "done-means.json")
+    if not os.path.isfile(spec):
+        print("done-means spec is missing at %s" % spec)
         return 1
-    root = Path(__file__).resolve().parents[2]
-    review_path = root / "done-means.review.json"
-    if not review_path.is_file():
-        print("no done-means.review.json at %s" % review_path)
-        return 1
-    data = json.loads(review_path.read_text())
-    reviewer = data.get("reviewer")
-    signature = data.get("signature")
-    if not isinstance(reviewer, str) or not isinstance(signature, str):
-        print("done-means.review.json has no reviewer signature")
-        return 1
-    pem = trust.get(reviewer) if isinstance(trust, dict) else None
-    if not isinstance(pem, str) or not signature_ok(pem, canonical_review(data), signature):
-        print("done-means.review.json signature is not valid for the CI trust store")
-        return 1
-    return 0
+    parent = tempfile.mkdtemp(prefix="ci-trust-")
+    trust_path = os.path.join(parent, "reviewers.json")
+    Path(trust_path).write_text(trust_json)
+    return main(
+        ["done_means.py", "run", spec],
+        trust=trust_path,
+        enforce_ownership=False,
+        require_live=False,
+        ci_base_ref=base_ref or "",
+    )
 
 
-def main(argv):
-    failed = self_test()
+def main_cli(argv):
     if "--self-test" in argv:
-        return failed
+        return self_test()
+    worktree = os.getcwd()
+    base_ref = ""
+    args = argv[1:]
+    index = 0
+    while index < len(args):
+        if args[index] == "--worktree" and index + 1 < len(args):
+            worktree = args[index + 1]
+            index += 2
+            continue
+        if args[index] == "--base-ref" and index + 1 < len(args):
+            base_ref = args[index + 1]
+            index += 2
+            continue
+        index += 1
+    failed = self_test()
     if failed:
         return failed
-    return verify_repo()
+    return verify_worktree(worktree, os.environ.get("HARNESS_REVIEWERS_JSON") or "", base_ref)
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main_cli(sys.argv))

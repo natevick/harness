@@ -19,7 +19,8 @@ if os.path.abspath(trust) in (
 PY
   python3 "$ROOT/tests/review_sign.py" --trust "$TRUST" "$TMP/reviewer.pub" "$REVIEWER_ID"
   mkdir -p "$GUARDRAILS_STATE_DIR"
-  : > "$GUARDRAILS_STATE_DIR/hook-live"
+  export GUARDRAILS_SESSION=test-session
+  python3 -c 'import os,sys; sys.path.insert(0, sys.argv[1]); from guardrails.live import note_hook; note_hook(os.environ["GUARDRAILS_SESSION"])' "$ROOT"
 }
 
 end_reviewer_fixture() {

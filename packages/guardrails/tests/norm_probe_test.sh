@@ -2,6 +2,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export SPEC_BASE_DIR="$ROOT/tests"
 CLI="$ROOT/done_means.py"
 CURSOR="$ROOT/adapters/cursor"
 SIGN="$ROOT/tests/review_sign.py"
@@ -25,9 +26,12 @@ git_repo() {
 
 write_check() {
   python3 - "$1" "$2" "$3" "$4" "${5:-}" <<'PY'
-import json, sys
+import json, os, sys
+sys.path.insert(0, os.environ["SPEC_BASE_DIR"])
 path, done, run, sabotage, author = sys.argv[1:]
+from spec_base import ensure_base
 doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
+doc["base"] = ensure_base(os.path.dirname(path) or ".")
 if sabotage == "false":
     doc["checks"][0]["sabotage"] = False
 if sabotage == "true":
@@ -173,6 +177,15 @@ else bad "install.sh spoof: $(cat "$TMP/out")"; fi
 fire_shell "$IDLE" "install -m 644 /tmp/t.json /etc/harness/reviewers.json"
 if denied "protected:"; then ok "install onto the trust store is denied"
 else bad "install trust: $(cat "$TMP/out")"; fi
+fire_shell "$IDLE" "echo x#; cp evil.json .cursor/hooks.json"
+if denied "protected:"; then ok "a glued hash does not comment out the copy"
+else bad "glued hash: $(cat "$TMP/out")"; fi
+LINK="$TMP/hh"
+rm -rf "$LINK"
+ln -s "$(python3 -c 'import os,pwd; print(pwd.getpwuid(os.geteuid()).pw_dir)')" "$LINK"
+fire_write "$IDLE" "$LINK/.harness/src/packages/guardrails/guardrails/done.py"
+if denied "protected:"; then ok "a write through a home symlink is denied"
+else bad "symlink write: $(cat "$TMP/out")"; fi
 SETUP="$TMP/setup-repo"
 rm -rf "$SETUP"
 mkdir -p "$SETUP"
@@ -192,7 +205,7 @@ rm -rf "$WITH"
 mkdir -p "$WITH/.cursor"
 "$ROOT/install.sh" --harness cursor --portable --force --target "$WITH/.cursor/hooks.json" >/dev/null
 with_rc=0
-"$ROOT/adapters/cursor/cloud-setup.sh" "$WITH" >"$TMP/with-out" 2>"$TMP/with-err" || with_rc=$?
+HARNESS_ROOT="$(cd "$ROOT/../.." && pwd)" "$ROOT/adapters/cursor/cloud-setup.sh" "$WITH" >"$TMP/with-out" 2>"$TMP/with-err" || with_rc=$?
 if [ -f /etc/harness/reviewers.json ]; then
   if [ "$with_rc" -eq 0 ]; then ok "cloud-setup self-test passes when the trust store is not writable"
   else bad "self-test rc=$with_rc $(cat "$TMP/with-err")"; fi
@@ -331,8 +344,8 @@ python3 - "$ROOT" "$FLIP" "$TRUST" <<'PY'
 import os, sys
 root, repo, trust = sys.argv[1:]
 sys.path.insert(0, root)
-from guardrails.done import bind_trust, release_trust, finish_problems
-bind_trust(trust, True)
+from guardrails.done import configure, finish_problems, release_trust
+configure(trust=trust, enforce_ownership=True, require_live=False)
 problems, _data = finish_problems(repo)
 release_trust()
 text = "\n".join(problems or [])
@@ -365,18 +378,37 @@ printf '' > "$BPRIME/pkg/__init__.py"
 git -C "$BPRIME" add pkg
 git -C "$BPRIME" commit -qm base
 printf '%s\n' 'def other():' '    return 0' 'def answer():' '    return 1' > "$BPRIME/pkg/mod.py"
+python3 -c 'import pytest' >/dev/null 2>&1 || python3 -m pip install -q pytest
 printf '%s\n' \
-  'import os, sys' \
-  'sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))' \
+  'import sys' \
+  'from pathlib import Path' \
+  'sys.path.insert(0, str(Path(__file__).resolve().parents[1]))' \
   'import pkg.mod as mod' \
-  'assert mod.answer() == mod.answer()' > "$BPRIME/test/test_answer.py"
-write_check "$BPRIME/done-means.json" "test/test_answer.py exits 0" "python3 test/test_answer.py" "true"
+  'def test_answer():' \
+  '    assert mod.answer() == mod.answer()' > "$BPRIME/test/test_answer.py"
+write_check "$BPRIME/done-means.json" "pytest test_answer exits 0" "python3 -m pytest -q test/test_answer.py" "true"
 signed_review "$BPRIME/done-means.json"
 rc=0
 cli run "$BPRIME" || rc=$?
-if [ "$rc" -eq 1 ]; then ok "a tautology over a new symbol is blocked"
+if [ "$rc" -eq 1 ]; then ok "a pytest tautology over a new symbol is blocked"
 else bad "bprime rc=$rc $(cat "$TMP/out")"; fi
-shows "AttributeError is not an assertion red" "crash or import"
+shows "the stub leaves the tautology green" "still passed"
+MASK="$TMP/mask"
+git_repo "$MASK"
+mkdir -p "$MASK/src"
+printf '1\n' > "$MASK/src/app.py"
+git -C "$MASK" add src/app.py
+git -C "$MASK" commit -qm base
+printf '2\n' > "$MASK/src/app.py"
+printf '%s\n' 'import sys' 'sys.stderr.write("AssertionError\nE   AttributeError: no attribute answer\n")' 'raise SystemExit(1)' > "$MASK/test_mask.py"
+mkdir -p "$MASK/test"
+write_check "$MASK/done-means.json" "the mask exits 0" "python3 test_mask.py" "true"
+signed_review "$MASK/done-means.json"
+rc=0
+cli run "$MASK" || rc=$?
+if [ "$rc" -eq 1 ]; then ok "a printed AssertionError does not hide a final AttributeError"
+else bad "mask rc=$rc $(cat "$TMP/out")"; fi
+shows "the final exception line decides" "crash or import"
 
 REAL="$TMP/realmod"
 git_repo "$REAL"
@@ -395,6 +427,35 @@ cli run "$REAL" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "a real assertion goes red when the new function is stubbed"
 else bad "real assertion rc=$rc $(cat "$TMP/out")"; fi
 
+echo "── N2: the base is a signed SHA, not a movable ref ──"
+REF="$TMP/refmove"
+rm -rf "$REF"
+mkdir -p "$REF/src"
+git -C "$REF" init -q -b main
+git -C "$REF" config user.email t@example.com
+git -C "$REF" config user.name t
+printf '1\n' > "$REF/src/app.py"
+git -C "$REF" add src/app.py
+git -C "$REF" commit -qm base
+PARENT="$(git -C "$REF" rev-parse HEAD)"
+git -C "$REF" checkout -q -b change
+printf '2\n' > "$REF/src/app.py"
+git -C "$REF" add src/app.py
+git -C "$REF" commit -qm change
+SPEC_BASE="$PARENT" write_check "$REF/done-means.json" "python3 -c print exits 0" "python3 -c 'print(1)'" ""
+signed_review "$REF/done-means.json"
+git -C "$REF" branch -f main HEAD
+rc=0
+cli run "$REF" || rc=$?
+if [ "$rc" -eq 1 ]; then ok "moving main to HEAD does not hide the committed change"
+else bad "ref move rc=$rc $(cat "$TMP/out")"; fi
+shows "the signed base still sees the product diff" "no test diff"
+git -C "$REF" update-ref -d refs/heads/main
+rc=0
+cli run "$REF" || rc=$?
+if [ "$rc" -eq 1 ]; then ok "deleting the main ref does not fall back to HEAD"
+else bad "deleted main rc=$rc $(cat "$TMP/out")"; fi
+
 echo "── B7: base env and a missing spec fail closed ──"
 PINNED="$TMP/pinned"
 rm -rf "$PINNED"
@@ -405,11 +466,12 @@ git -C "$PINNED" config user.name t
 printf '1\n' > "$PINNED/src/app.py"
 git -C "$PINNED" add src/app.py
 git -C "$PINNED" commit -qm base
+PARENT="$(git -C "$PINNED" rev-parse HEAD)"
 git -C "$PINNED" checkout -q -b change
 printf '2\n' > "$PINNED/src/app.py"
 git -C "$PINNED" add src/app.py
 git -C "$PINNED" commit -qm change
-write_check "$PINNED/done-means.json" "python3 -c print exits 0" "python3 -c 'print(1)'" ""
+SPEC_BASE="$PARENT" write_check "$PINNED/done-means.json" "python3 -c print exits 0" "python3 -c 'print(1)'" ""
 signed_review "$PINNED/done-means.json"
 rc=0
 GUARDRAILS_DONE_BASE=HEAD cli run "$PINNED" || rc=$?
@@ -456,6 +518,18 @@ sys.exit(0 if verdict.decision == "deny" else 1)
 PY
 if [ "$?" -eq 0 ]; then ok "a missing GUARDRAILS_DONE_MEANS path denies the stop"
 else bad "missing spec path was allowed"; fi
+SEEN="$TMP/seen"
+rm -rf "$SEEN"
+mkdir -p "$SEEN"
+write_check "$SEEN/done-means.json" "true exits 0" "false" "false"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$SEEN" "$TRUST" "$GUARDRAILS_STATE_DIR" "hello" seen-1 deny
+rm -f "$SEEN/done-means.json"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$SEEN" "$TRUST" "$GUARDRAILS_STATE_DIR" "hello" seen-1 deny
+if [ "$?" -eq 0 ]; then ok "the same session still expects a spec after it is renamed away"
+else bad "same-session rename was allowed"; fi
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$SEEN" "$TRUST" "$GUARDRAILS_STATE_DIR" "hello" seen-2 allow
+if [ "$?" -eq 0 ]; then ok "a fresh session does not keep another session's spec marker"
+else bad "fresh session was denied"; fi
 
 echo "── B8: any non-question stop is denied while the gate fails ──"
 PHRASES=(
@@ -476,25 +550,47 @@ PHRASES=(
   "Complete."
 )
 phrase_rc=0
+phrase_i=0
 for phrase in "${PHRASES[@]}"; do
-  python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "$phrase" phrases deny
+  phrase_i=$((phrase_i + 1))
+  python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "$phrase" "phrase-$phrase_i" deny
   if [ "$?" -ne 0 ]; then phrase_rc=1; bad "allowed completion phrasing: $phrase"; fi
 done
 if [ "$phrase_rc" -eq 0 ]; then ok "fifteen completion phrasings are denied while the spec fails"; fi
-python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "Finished reading the logs, but I still need your input. Which branch?" ask allow
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "Finished reading the logs, but I still need your input. Which branch?" ask warn
 if [ "$?" -eq 0 ]; then ok "a question is not denied as a done claim"
 else bad "question was denied"; fi
-python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "BLOCKED: the check is still red." blocked allow
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "BLOCKED: the check is still red." blocked warn
+loose_i=0
+for loose in \
+  "Done. Tests pass. Anything else?" \
+  "The task is complete. Want me to open a PR?" \
+  "Shipped, see https://example.com/run?id=1" \
+  "Done. I ran \`curl localhost/?q=1\`." \
+  "BLOCKED:" \
+  "BLOCKED: nothing left, all done."
+do
+  loose_i=$((loose_i + 1))
+  python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "$loose" "loose-$loose_i" deny
+  if [ "$?" -ne 0 ]; then bad "excused a done claim: $loose"; fi
+done
+ok "question marks and a bare BLOCKED line do not excuse a done claim"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap deny
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap deny
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap deny
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap warn
+if [ "$?" -eq 0 ]; then ok "the fourth stop in a session is a notice, not another deny"
+else bad "stop cap did not open"; fi
 if [ "$?" -eq 0 ]; then ok "a BLOCKED: line is not denied"
 else bad "BLOCKED was denied"; fi
 
-rm -f "$GUARDRAILS_STATE_DIR/hook-live"
+rm -f "$GUARDRAILS_STATE_DIR/hook-live-$GUARDRAILS_SESSION"
 rc=0
 cli run "$DOC" || rc=$?
 if [ "$rc" -eq 1 ]; then ok "run refuses when no hook has fired"
 else bad "heartbeat rc=$rc $(cat "$TMP/out")"; fi
 shows "the missing heartbeat is named" "hooks not live for this session"
-: > "$GUARDRAILS_STATE_DIR/hook-live"
+python3 -c 'import os,sys; sys.path.insert(0, sys.argv[1]); from guardrails.live import note_hook; note_hook(os.environ["GUARDRAILS_SESSION"])' "$ROOT"
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"

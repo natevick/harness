@@ -23,8 +23,8 @@ def main():
         text, source = cursorio.assistant_text(event)
         if source == "absent":
             cursorio.note_missing_stop_text(event, "goals")
-            return 0
-        return cursorio.decide(event, "goals", goals.check_stop(text, event.cwd, event.session))
+            text = ""
+        return cursorio.decide(event, "goals", goals.check_stop(text or "", event.cwd, event.session))
     paths = paths_for(event)
     if not paths:
         return cursorio.allow(event)

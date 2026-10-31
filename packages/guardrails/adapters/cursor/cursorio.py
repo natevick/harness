@@ -261,6 +261,12 @@ def decide(event, guard, verdict):
         emit({"continue": False, "user_message": verdict.reason})
         return 0
 
+    if verdict.decision == WARN and event.name == "stop":
+        log_decision(event, guard, verdict)
+        sys.stderr.write(verdict.reason + "\n")
+        emit({"systemMessage": verdict.reason})
+        return 0
+
     if verdict.decision == DENY and event.can_followup:
         if not event.follow_up_ok:
             return 0

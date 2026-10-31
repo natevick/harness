@@ -1,0 +1,42 @@
+name: review-signature
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review-signature:
+    name: gate/review-signature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run the base verifier against this worktree
+        env:
+          HARNESS_REVIEWERS_JSON: ${{ secrets.HARNESS_REVIEWERS_JSON }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          verifier="packages/guardrails/ci_verify_review.py"
+          if [ -n "${BASE_REF}" ]; then
+            git fetch origin "${BASE_REF}"
+            if git cat-file -e "origin/${BASE_REF}:packages/guardrails/ci_verify_review.py" 2>/dev/null; then
+              dest="$(mktemp -d)"
+              git archive "origin/${BASE_REF}" packages/guardrails | tar -x -C "${dest}"
+              verifier="${dest}/packages/guardrails/ci_verify_review.py"
+            else
+              echo "bootstrap: origin/${BASE_REF} has no verifier yet; using this worktree's copy"
+            fi
+          fi
+          python3 "${verifier}" --worktree "${GITHUB_WORKSPACE}" --base-ref "${BASE_REF}"

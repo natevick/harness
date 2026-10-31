@@ -81,14 +81,18 @@ WORK = re.compile(
 )
 
 DONE_CLAIM = re.compile(
-    r"(?:^|\n)\s*done[.!]?(?=\s*(?:\n|$))"
-    r"|(?:^|\n)\s*finished\b"
-    r"|\b(?:this is done|task is done|work is done|ready for review|ready to merge|"
-    r"all checks pass|i am done|i(?:'|’)m done|all done|everything is done|"
-    r"this is finished|task is finished|work is finished|all finished|"
-    r"i am finished|i(?:'|’)m finished|everything is finished)\b",
+    r"\b(?:done|complete|completed|shipped)\b"
+    r"|\ball set\b"
+    r"|\beverything works\b"
+    r"|\bwrapped up\b"
+    r"|\bin place and working\b"
+    r"|\bi(?:'|’)ve finished\b"
+    r"|\bi have finished\b"
+    r"|\bi(?:'|’)ve completed\b"
+    r"|\bi have completed\b",
     re.I,
 )
+BLOCKED_LINE = re.compile(r"^BLOCKED: \S.{9,}")
 
 NOTE = """<system-reminder>
 UNBOUNDED-WORK GATE
@@ -278,10 +282,15 @@ def spec_expected(cwd, session):
 
 
 def stop_excused(text):
-    body = prose(text or "").strip()
-    if body.startswith("BLOCKED:"):
+    body = prose(text or "")
+    if claims_done(body):
+        return False
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if not lines:
+        return False
+    if BLOCKED_LINE.match(lines[0]):
         return True
-    return "?" in body
+    return lines[-1].endswith("?")
 
 
 def check_start(cwd, session, paths, command=""):
@@ -309,15 +318,17 @@ def check_start(cwd, session, paths, command=""):
 
 def check_stop(text, cwd, session=""):
     from . import done
-    from .live import hooks_live
+    from .live import hooks_live, record_stop_deny, stop_denies
 
     if not spec_expected(cwd, session):
         return PASS
     if not hooks_live(session):
         return deny("hooks not live for this session")
-    if stop_excused(text):
+    problems, _data = done.finish_problems(cwd, session=session)
+    if not problems:
         return PASS
-    problems, _data = done.finish_problems(cwd)
-    if problems:
-        return deny(done.format_block(problems))
-    return PASS
+    notice = done.format_block(problems)
+    if stop_excused(text) or stop_denies(session) >= 3:
+        return warn(notice)
+    record_stop_deny(session)
+    return deny(notice)

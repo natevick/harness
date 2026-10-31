@@ -138,7 +138,7 @@ pass/fail summary — a suite that reports nothing because it ran nothing.
 | `GUARDRAILS_COMMAND_WRAPPERS` | empty | wrapper commands to look through before `gh`/`git` |
 | `GUARDRAILS_NOTIFY_COMMANDS` | empty | commands whose `--notify` text is budgeted |
 | `GUARDRAILS_DONE_MEANS` | `done-means.json` in the work tree | `off` does not stand the gate down; any other value is the spec path |
-| `GUARDRAILS_DONE_BASE` | ignored | the base is the merge-base with `origin/main` or `main`, or the spec's signed `base` field |
+| `GUARDRAILS_DONE_BASE` | ignored | `base` in the signed spec is a 40-character SHA and must be an ancestor of HEAD |
 
 `decisions.jsonl` stores a truncated SHA-256 of the command, not the command; state files are 0600
 in a 0700 directory. Shell writes needing expansion are out of scope — see

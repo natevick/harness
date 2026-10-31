@@ -17,5 +17,7 @@ elif expect == "deny":
     sys.exit(0 if verdict.decision == "deny" else 1)
 elif expect == "allow":
     sys.exit(0 if verdict.decision == "allow" else 1)
+elif expect == "warn":
+    sys.exit(0 if verdict.decision == "warn" else 1)
 else:
     sys.exit(2)

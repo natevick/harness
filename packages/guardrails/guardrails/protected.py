@@ -41,6 +41,10 @@ def _folded(cwd, path):
         absolute = os.path.normpath(text)
     else:
         absolute = os.path.abspath(os.path.join(cwd or ".", text))
+    try:
+        absolute = os.path.realpath(absolute)
+    except OSError:
+        return absolute.replace("\\", "/")
     return absolute.replace("\\", "/")
 
 
@@ -99,7 +103,7 @@ def write_like(command):
     if SED.search(command) and SED_INPLACE.search(command):
         return True
     try:
-        tokens = shlex.split(command, comments=True)
+        tokens = shlex.split(command)
     except ValueError:
         tokens = command.split()
     bases = {os.path.basename(token) for token in tokens}
@@ -112,7 +116,7 @@ def command_targets(command, cwd):
     if not write_like(command):
         return []
     try:
-        tokens = shlex.split(command, comments=True)
+        tokens = shlex.split(command)
     except ValueError:
         tokens = command.split()
     found = []

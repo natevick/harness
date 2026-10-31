@@ -2,6 +2,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export SPEC_BASE_DIR="$ROOT/tests"
 CLI="$ROOT/done_means.py"
 CURSOR="$ROOT/adapters/cursor"
 HOOK="$ROOT/adapters/hookjson"
@@ -16,9 +17,12 @@ fail=0
 
 write_spec() {
   python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
-import json, sys
+import json, os, sys
+sys.path.insert(0, os.environ["SPEC_BASE_DIR"])
 path, done, run, flag, extra = sys.argv[1:]
+from spec_base import ensure_base
 doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
+doc["base"] = ensure_base(os.path.dirname(path) or ".")
 if flag == "off":
     doc["checks"][0]["sabotage"] = False
 if extra == "human":
@@ -390,15 +394,19 @@ json.dump({
     }],
 }, open(os.path.join(repo, "done-means.sabotage.json"), "w"))
 PY
-hold_pid=$(python3 - "$CLI" "$HOLD" "$TMP/hold-out" "$TMP/hold-err" <<'PY'
-import subprocess, sys
-cli, hold, out_path, err_path = sys.argv[1:]
+hold_pid=$(python3 - "$ROOT/tests/invoke_done.py" "$TRUST" "$HOLD" "$TMP/hold-out" "$TMP/hold-err" "$GUARDRAILS_STATE_DIR" "$GUARDRAILS_SESSION" <<'PY'
+import os, subprocess, sys
+cli, trust, hold, out_path, err_path, state, session = sys.argv[1:]
+env = dict(os.environ)
+env["GUARDRAILS_STATE_DIR"] = state
+env["GUARDRAILS_SESSION"] = session
 proc = subprocess.Popen(
-    [sys.executable, cli, "run", hold],
+    [sys.executable, cli, trust, "run", hold],
     stdin=subprocess.DEVNULL,
     stdout=open(out_path, "w"),
     stderr=open(err_path, "w"),
     start_new_session=True,
+    env=env,
 )
 print(proc.pid)
 PY

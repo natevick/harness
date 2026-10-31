@@ -261,6 +261,10 @@ def decide(event, guard, verdict):
         }}))
         return 0
 
+    if verdict.decision == WARN and event.name == "stop":
+        print(json.dumps({"systemMessage": verdict.reason}))
+        return 0
+
     if verdict.decision == WARN:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": event.wire,

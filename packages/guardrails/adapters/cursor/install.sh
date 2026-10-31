@@ -67,7 +67,7 @@ from pathlib import Path
 
 snippet_path, root, target, force, portable = sys.argv[1:6]
 if portable == "1":
-    root_ref = "${HARNESS_ROOT:-$HOME/.harness/src}/packages/guardrails"
+    root_ref = "${HARNESS_ROOT:-/opt/harness}/packages/guardrails"
 else:
     root_ref = shlex.quote(root)
 body = Path(snippet_path).read_text().replace("{{GUARDRAILS}}", root_ref)
