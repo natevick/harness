@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from .goals import vague_clause, vague_prompt
 
-KEYS = {"task", "done", "checks", "paths", "human", "tests"}
+KEYS = {"task", "done", "checks", "paths", "human", "tests", "base"}
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
@@ -95,6 +96,10 @@ def text_problem(label, value, vague):
     return None
 
 
+def base_sha(value):
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+
 def schema_problems(data):
     problems = []
     extra = set(data) - KEYS
@@ -143,6 +148,8 @@ def schema_problems(data):
         string_list(data.get("human"), "human", problems)
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
+    if "base" in data and not base_sha(data.get("base")):
+        problems.append("base must be a 40-character lowercase hex SHA")
 
     if runnable == 0 and not must_change:
         problems.append("no runnable check")

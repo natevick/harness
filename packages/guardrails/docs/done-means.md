@@ -26,6 +26,8 @@ The review file is `done-means.review.json`. A pass is `observable`, `testable`,
 
 A changed path counts as a test when a parent directory is `test`, `tests`, `__tests__`, `spec`, or `specs`, or the filename matches `test_*`, `spec_*`, `*_test`, `*.test.*`, `*.spec.*`, `*_test.*`, or `*_spec.*`. A `tests` list in the spec replaces that guess. A check is sabotaged unless it sets `"sabotage": false`. Set that on a check whose exit does not depend on the local diff, such as `gh pr checks --required`: left at the default, it fails closed because the remote check still passes after the local revert. The base ref is `GUARDRAILS_DONE_BASE`, else `origin/main`, else `main`, else `HEAD`.
 
+Optional top-level `base`, when present, must be a 40-character lowercase hex SHA. A spec that omits it validates as before. The field is format-checked only and does not select the git base. SHA-256 repos (64-character ids) are not accepted yet.
+
 `task`, `done`, and `run` reject the template token `REPLACE` wherever it appears.
 
 ## Advisory

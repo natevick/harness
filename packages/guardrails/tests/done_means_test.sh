@@ -42,6 +42,8 @@ if extra.startswith("must:"):
     doc["paths"] = {"must_change": [extra.split(":", 1)[1]]}
 if extra == "vague-run":
     doc["checks"][0]["run"] = "loop until zero failing"
+if extra.startswith("base:"):
+    doc["base"] = extra.split(":", 1)[1]
 json.dump(doc, open(path, "w"))
 PY
 }
@@ -195,6 +197,39 @@ rc=0
 cli validate "$PLAIN" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "make clean is a command, not a vague sentence"
 else bad "make clean rc=$rc $(cat "$TMP/out")"; fi
+
+echo "── optional base is a 40-character lowercase hex SHA ──"
+BASE_SHA="0123456789abcdef0123456789abcdef01234567"
+write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "base:$BASE_SHA"
+write_review "$PLAIN/done-means.json" pass
+rc=0
+cli validate "$PLAIN" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a spec with a valid base validates"
+else bad "valid base rc=$rc $(cat "$TMP/out")"; fi
+
+reject_base() {
+  local name="$1" value="$2"
+  write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "base:$value"
+  write_review "$PLAIN/done-means.json" pass
+  rc=0
+  cli validate "$PLAIN" || rc=$?
+  if [ "$rc" -ne 0 ]; then ok "$name fails validation"
+  else bad "$name exited 0 $(cat "$TMP/out")"; fi
+  shows "$name names the SHA rule" "base must be a 40-character lowercase hex SHA"
+}
+
+reject_base "a short base" "abcdef"
+reject_base "a non-hex base" "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+reject_base "a ref name base" "main"
+reject_base "an uppercase base" "0123456789ABCDEF0123456789ABCDEF01234567"
+reject_base "a 41-character base" "${BASE_SHA}0"
+
+write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" ""
+write_review "$PLAIN/done-means.json" pass
+rc=0
+cli validate "$PLAIN" || rc=$?
+if [ "$rc" -eq 0 ] && ! grep -q "base" "$TMP/out"; then ok "a spec without base validates unchanged"
+else bad "missing base rc=$rc $(cat "$TMP/out")"; fi
 
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "human"
 write_review "$PLAIN/done-means.json" pass
