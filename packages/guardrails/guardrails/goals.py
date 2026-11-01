@@ -81,9 +81,21 @@ WORK = re.compile(
 )
 
 DONE_CLAIM = re.compile(
-    r"(?:^|\n)\s*done[.!]?\s*(?:\n|$)"
-    r"|\b(?:this is done|task is done|work is done|ready for review|ready to merge|"
-    r"all checks pass|i am done|i(?:'|’)m done)\b",
+    r"\b(?:done|complete|completed|shipped)\b"
+    r"|\ball set\b"
+    r"|\beverything works\b"
+    r"|\bwrapped up\b"
+    r"|\bin place and working\b"
+    r"|\bi(?:'|’)ve finished\b"
+    r"|\bi have finished\b"
+    r"|\bi(?:'|’)ve completed\b"
+    r"|\bi have completed\b",
+    re.I,
+)
+BLOCKED_LINE = re.compile(r"^BLOCKED: \S.{9,}")
+QUESTION = re.compile(
+    r"^(?:who|what|when|where|why|how|which|is|are|am|do|does|did|can|could|"
+    r"should|would|will|shall|may|might|have|has|was|were)\b",
     re.I,
 )
 
@@ -229,10 +241,13 @@ def task_open(session):
 
 
 def shell_paths(command, cwd):
+    from .protected import command_targets
+
     writes, patches = bash_units(command or "")
     paths = [resolve(target, cwd or "") for target, _text, _append in writes]
     for patch in patches:
         paths.extend(unit[0] for unit in patch_units(patch, cwd))
+    paths.extend(command_targets(command, cwd or ""))
     return paths
 
 
@@ -257,13 +272,56 @@ def engaged(cwd, session):
     return task_open(session) or os.path.isfile(done.locate(cwd))
 
 
-def check_start(cwd, session, paths):
+def spec_expected(cwd, session):
     from . import done
+    from .live import note_spec, spec_seen
 
-    if done.stood_down() or not engaged(cwd, session):
+    if os.path.isfile(done.locate(cwd)):
+        note_spec(session)
+        return True
+    if spec_seen(session) or task_open(session):
+        return True
+    if done.override_missing(cwd) or done.spec_removed(cwd):
+        return True
+    return False
+
+
+def stop_excused(text):
+    body = prose(text or "")
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if not lines:
+        return False
+    if BLOCKED_LINE.match(lines[0]):
+        return not any(claims_done(line) for line in lines[1:])
+    sentences = []
+    for line in lines:
+        sentences.extend(
+            part.strip() for part in re.split(r"(?<=[.!])\s+", line) if part.strip()
+        )
+    if not sentences:
+        return False
+    earlier, last = sentences[:-1], sentences[-1]
+    if any(claims_done(part) for part in earlier):
+        return False
+    return last.endswith("?") and QUESTION.match(last) is not None
+
+
+def check_start(cwd, session, paths, command=""):
+    del command
+    from . import done
+    from .protected import format_block, is_protected
+
+    protected_hits = []
+    for path in paths or []:
+        if is_protected(cwd, path) and path not in protected_hits:
+            protected_hits.append(path)
+    if protected_hits:
+        return deny(format_block(protected_hits))
+    paths = [path for path in (paths or []) if not is_protected(cwd, path)]
+    if not paths or not spec_expected(cwd, session):
         return PASS
     spec = done.locate(cwd)
-    if paths and all(done.allowed_write(cwd, path) for path in paths):
+    if all(done.allowed_write(cwd, path) for path in paths):
         return PASS
     problems, _data = done.start_problems(cwd, spec)
     if problems:
@@ -271,12 +329,21 @@ def check_start(cwd, session, paths):
     return PASS
 
 
-def check_stop(text, cwd, session=""):
+def check_stop(text, cwd, session="", continued=True):
     from . import done
+    from .live import hooks_live, record_stop_deny, reset_stop_denies, stop_denies
 
-    if done.stood_down() or not claims_done(text) or not engaged(cwd, session):
+    if not continued:
+        reset_stop_denies(session)
+    if not spec_expected(cwd, session):
         return PASS
-    problems, _data = done.finish_problems(cwd)
-    if problems:
-        return deny(done.format_block(problems))
-    return PASS
+    if not hooks_live(session):
+        return deny("hooks not live for this session")
+    problems, _data = done.finish_problems(cwd, session=session)
+    if not problems:
+        return PASS
+    notice = done.format_block(problems)
+    if stop_excused(text) or stop_denies(session) >= 3:
+        return warn(notice)
+    record_stop_deny(session)
+    return deny(notice)

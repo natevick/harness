@@ -273,8 +273,8 @@ if [ "$rc" -eq 4 ] && grep -q 'Claude-shaped' "$TMP/err"; then
 else bad "claude file rc=$rc $(cat "$TMP/err")"; fi
 
 portable="$("$INSTALL" --harness cursor --portable)"
-if printf '%s' "$portable" | grep -q '${HARNESS_ROOT:-$HOME/.harness/src}/packages/guardrails/adapters/cursor/pipe_exit_code_guard.py'; then
-  ok "portable commands expand HARNESS_ROOT or ~/.harness/src"
+if printf '%s' "$portable" | grep -q 'python3 -s -E ${HARNESS_ROOT:-/opt/harness}/packages/guardrails/adapters/cursor/pipe_exit_code_guard.py'; then
+  ok "portable commands use python3 -s -E and /opt/harness"
 else bad "portable snippet: $portable"; fi
 
 REPO="$(cd "$ROOT/../.." && pwd)"
@@ -287,7 +287,7 @@ if python3 -c '
 import json,sys
 config=json.load(open(sys.argv[1]))
 cmd=config["hooks"]["beforeShellExecution"][0]["command"]
-sys.exit(0 if "${HARNESS_ROOT:-$HOME/.harness/src}/packages/guardrails/adapters/cursor/" in cmd else 1)
+sys.exit(0 if "python3 -s -E ${HARNESS_ROOT:-/opt/harness}/packages/guardrails/adapters/cursor/" in cmd else 1)
 ' "$TMP/root-hooks.json"; then ok "the root installer forwards --portable into hooks.json"
 else bad "root portable file: $(cat "$TMP/root-hooks.json")"; fi
 

@@ -22,16 +22,17 @@ def main():
     if event is None:
         return 0
     if event.name == "stop":
-        if event.stop_hook_active:
-            return 0
-        text = hookio.assistant_reply(event)
-        if not text:
-            return 0
-        return hookio.decide(event, "goals", goals.check_stop(text, event.cwd, event.session))
+        text = hookio.assistant_reply(event) or ""
+        return hookio.decide(
+            event, "goals",
+            goals.check_stop(text, event.cwd, event.session, event.stop_hook_active),
+        )
     paths = paths_for(event)
     if not paths:
         return 0
-    return hookio.decide(event, "goals", goals.check_start(event.cwd, event.session, paths))
+    return hookio.decide(
+        event, "goals", goals.check_start(event.cwd, event.session, paths, event.command)
+    )
 
 
 if __name__ == "__main__":
