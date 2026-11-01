@@ -336,10 +336,10 @@ def resolve_base(cwd, data):
     )
     if head.returncode != 0:
         if _CI_BASE:
-            return None, "base: cannot merge-base origin/%s with HEAD" % _CI_BASE
+            return None, "base: cannot merge-base refs/remotes/origin/%s with HEAD" % _CI_BASE
         return raw, ""
     if _CI_BASE:
-        ref = "origin/%s" % _CI_BASE
+        ref = "refs/remotes/origin/%s" % _CI_BASE
         merged = subprocess.run(
             ["git", "-C", cwd, "merge-base", ref, "HEAD"],
             capture_output=True,

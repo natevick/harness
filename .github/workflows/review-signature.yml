@@ -28,7 +28,24 @@ jobs:
       - name: Install the duplicate-logic detector
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: bash packages/guardrails/ci_npm.sh "${GITHUB_WORKSPACE}" "${BASE_REF}"
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          prefix="${GITHUB_WORKSPACE}/packages/guardrails"
+          if [ -n "${BASE_REF}" ]; then
+            git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          fi
+          base_tip="refs/remotes/origin/${BASE_REF}"
+          if [ -n "${BASE_REF}" ] && git cat-file -e "${base_tip}:packages/guardrails/package-lock.json" 2>/dev/null; then
+            dest="$(mktemp -d)"
+            git archive "${base_tip}" packages/guardrails/package.json packages/guardrails/package-lock.json | tar -x -C "${dest}"
+            npm ci --ignore-scripts --prefix "${dest}/packages/guardrails"
+            rm -rf "${prefix}/node_modules"
+            mkdir -p "${prefix}"
+            mv "${dest}/packages/guardrails/node_modules" "${prefix}/node_modules"
+          else
+            npm ci --ignore-scripts --prefix "${prefix}"
+          fi
 
       - name: Run the base verifier against this worktree
         env:
@@ -37,5 +54,23 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          verifier="$(bash packages/guardrails/ci_select_verifier.sh "${GITHUB_WORKSPACE}" "${BASE_REF}" "${DEFAULT_BRANCH}")"
+          cd "${GITHUB_WORKSPACE}"
+          own="${GITHUB_WORKSPACE}/packages/guardrails/ci_verify_review.py"
+          if [ -z "${BASE_REF}" ]; then
+            verifier="${own}"
+          else
+            git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            base_tip="refs/remotes/origin/${BASE_REF}"
+            if git cat-file -e "${base_tip}:packages/guardrails/ci_verify_review.py" 2>/dev/null; then
+              dest="$(mktemp -d)"
+              git archive "${base_tip}" packages/guardrails | tar -x -C "${dest}"
+              verifier="${dest}/packages/guardrails/ci_verify_review.py"
+            elif [ -n "${DEFAULT_BRANCH}" ] && [ "${BASE_REF}" = "${DEFAULT_BRANCH}" ]; then
+              printf 'bootstrap: origin/%s has no verifier yet; using this worktree'\''s copy\n' "${BASE_REF}" >&2
+              verifier="${own}"
+            else
+              printf 'refusing to verify with this pull request'\''s copy; origin/%s has no verifier\n' "${BASE_REF}" >&2
+              exit 1
+            fi
+          fi
           python3 "${verifier}" --worktree "${GITHUB_WORKSPACE}" --base-ref "${BASE_REF}"
