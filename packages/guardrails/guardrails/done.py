@@ -20,7 +20,6 @@ _ENFORCE = True
 _REQUIRE_LIVE = True
 _SESSION = ""
 _CI_BASE = ""
-SHA = re.compile(r"^[0-9a-f]{40}$")
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
@@ -136,6 +135,10 @@ def text_problem(label, value, vague):
     return None
 
 
+def base_sha(value):
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+
 def schema_problems(data):
     problems = []
     extra = set(data) - KEYS
@@ -188,9 +191,8 @@ def schema_problems(data):
         reason = text_problem("author", data.get("author"), vague_clause)
         if reason:
             problems.append(reason)
-    base = data.get("base")
-    if not isinstance(base, str) or not SHA.match(base.strip().lower()):
-        problems.append("base must be a 40-character hex SHA")
+    if not base_sha(data.get("base")):
+        problems.append("base must be a 40-character lowercase hex SHA")
 
     if runnable == 0 and not must_change:
         problems.append("no runnable check")
@@ -346,10 +348,10 @@ def matches(pattern, path):
 
 
 def resolve_base(cwd, data):
-    raw = data.get("base") if isinstance(data, dict) else ""
-    base = raw.strip().lower() if isinstance(raw, str) else ""
-    if not SHA.match(base):
-        return None, "base must be a 40-character hex SHA"
+    raw = data.get("base") if isinstance(data, dict) else None
+    if not base_sha(raw):
+        return None, "base must be a 40-character lowercase hex SHA"
+    base = raw
     if _CI_BASE:
         ref = "origin/%s" % _CI_BASE
         merged = subprocess.run(
@@ -413,10 +415,10 @@ def spec_removed(cwd):
     except ValueError:
         return False
     base = data.get("base") if isinstance(data, dict) else ""
-    if not isinstance(base, str) or not SHA.match(base.strip().lower()):
+    if not base_sha(base):
         return False
     log = subprocess.run(
-        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "%s..HEAD" % base.strip().lower(), "--", name],
+        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "%s..HEAD" % base, "--", name],
         capture_output=True,
         text=True,
     )
