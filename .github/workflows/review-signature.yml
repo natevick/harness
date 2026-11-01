@@ -1,0 +1,41 @@
+name: review-signature
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review-signature:
+    name: gate/review-signature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the duplicate-logic detector
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash packages/guardrails/ci_npm.sh "${GITHUB_WORKSPACE}" "${BASE_REF}"
+
+      - name: Run the base verifier against this worktree
+        env:
+          HARNESS_REVIEWERS_JSON: ${{ secrets.HARNESS_REVIEWERS_JSON }}
+          BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          verifier="$(bash packages/guardrails/ci_select_verifier.sh "${GITHUB_WORKSPACE}" "${BASE_REF}" "${DEFAULT_BRANCH}")"
+          python3 "${verifier}" --worktree "${GITHUB_WORKSPACE}" --base-ref "${BASE_REF}"
