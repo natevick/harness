@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +11,6 @@ from pathlib import Path
 from .goals import vague_clause, vague_prompt
 
 KEYS = {"task", "done", "checks", "paths", "human", "tests", "base"}
-HEX = "0123456789abcdef"
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
@@ -97,7 +97,7 @@ def text_problem(label, value, vague):
 
 
 def base_sha(value):
-    return isinstance(value, str) and len(value) == 40 and all(char in HEX for char in value)
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
 
 
 def schema_problems(data):
