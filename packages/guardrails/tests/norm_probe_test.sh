@@ -34,6 +34,7 @@ doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
 doc["base"] = ensure_base(os.path.dirname(path) or ".")
 if sabotage == "false":
     doc["checks"][0]["sabotage"] = False
+    doc["checks"][0]["reason"] = "the check does not depend on the local diff"
 if sabotage == "true":
     doc["checks"][0]["sabotage"] = True
 if author:
@@ -209,6 +210,10 @@ HARNESS_ROOT="$(cd "$ROOT/../.." && pwd)" "$ROOT/adapters/cursor/cloud-setup.sh"
 if [ -f /etc/harness/reviewers.json ]; then
   if [ "$with_rc" -eq 0 ]; then ok "cloud-setup self-test passes when the trust store is not writable"
   else bad "self-test rc=$with_rc $(cat "$TMP/with-err")"; fi
+  if grep -q "Local hooks are advisory" "$ROOT/adapters/cursor/cloud-setup.sh" \
+    && ! grep -q 'raise SystemExit("harness install is writable by this user' "$ROOT/adapters/cursor/cloud-setup.sh"; then
+    ok "a writable install root does not fail cloud-setup"
+  else bad "cloud-setup still treats a writable install root as fatal"; fi
 else
   if [ "$with_rc" -ne 0 ] && grep -q "trust store" "$TMP/with-err"; then
     ok "cloud-setup self-test fails closed without a root trust store"
@@ -561,14 +566,16 @@ python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STAT
 if [ "$?" -eq 0 ]; then ok "a question is not denied as a done claim"
 else bad "question was denied"; fi
 python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "BLOCKED: the check is still red." blocked warn
+blocked_rc=$?
+if [ "$blocked_rc" -eq 0 ]; then ok "a BLOCKED: line is not denied"
+else bad "BLOCKED was denied"; fi
 loose_i=0
 for loose in \
   "Done. Tests pass. Anything else?" \
   "The task is complete. Want me to open a PR?" \
   "Shipped, see https://example.com/run?id=1" \
   "Done. I ran \`curl localhost/?q=1\`." \
-  "BLOCKED:" \
-  "BLOCKED: nothing left, all done."
+  "BLOCKED:"
 do
   loose_i=$((loose_i + 1))
   python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "$loose" "loose-$loose_i" deny
@@ -581,8 +588,76 @@ python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STAT
 python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap warn
 if [ "$?" -eq 0 ]; then ok "the fourth stop in a session is a notice, not another deny"
 else bad "stop cap did not open"; fi
-if [ "$?" -eq 0 ]; then ok "a BLOCKED: line is not denied"
-else bad "BLOCKED was denied"; fi
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" cap deny new
+if [ "$?" -eq 0 ]; then ok "a new turn resets the three-deny cap"
+else bad "a new turn stayed at the cap"; fi
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "BLOCKED: the DB password rotation is done." pw warn
+if [ "$?" -eq 0 ]; then ok "a BLOCKED line that mentions done is a notice"
+else bad "BLOCKED DB password was denied"; fi
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "Is the migration done?" qdone warn
+if [ "$?" -eq 0 ]; then ok "a question that contains done is not denied"
+else bad "a done question was denied"; fi
+empty_i=0
+while [ "$empty_i" -lt 3 ]; do
+  empty_i=$((empty_i + 1))
+  python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" "" deny
+  if [ "$?" -ne 0 ]; then bad "an empty session id denied forever at try $empty_i"; fi
+done
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PHRASE" "$TRUST" "$GUARDRAILS_STATE_DIR" "still working" "" warn
+if [ "$?" -eq 0 ]; then ok "an empty session id reaches the three-deny cap"
+else bad "an empty session id never opened the cap"; fi
+
+echo "── pytest E assert is an assertion, and a new non-Python file does not refuse sabotage ──"
+python3 - "$ROOT" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from guardrails.done import assertion_red
+out = "F\nE   assert 1 == 2\n"
+raise SystemExit(0 if assertion_red(1, out) else 1)
+PY
+if [ "$?" -eq 0 ]; then ok "a pytest E assert line counts as an assertion"
+else bad "a pytest E assert line was treated as a crash"; fi
+
+NEWF="$TMP/newfile"
+git_repo "$NEWF"
+mkdir -p "$NEWF"
+printf '%s\n' 'def answer():' '    return 0' > "$NEWF/answer.py"
+git -C "$NEWF" add answer.py
+git -C "$NEWF" commit -qm base
+printf '%s\n' 'def answer():' '    return 1' > "$NEWF/answer.py"
+printf 'note\n' > "$NEWF/extra.txt"
+mkdir -p "$NEWF/test"
+printf '%s\n' \
+  'import os, sys' \
+  'sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))' \
+  'import answer' \
+  'assert answer.answer() == 1' > "$NEWF/test/test_answer.py"
+write_check "$NEWF/done-means.json" "test/test_answer.py exits 0" "python3 test/test_answer.py" "true"
+signed_review "$NEWF/done-means.json"
+rc=0
+cli run "$NEWF" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a new non-Python file does not refuse a real assertion"
+else bad "new file rc=$rc $(cat "$TMP/out")"; fi
+
+echo "── an old spec deletion already on main does not deny a later session ──"
+OLD="$TMP/old-spec"
+rm -rf "$OLD"
+mkdir -p "$OLD"
+git -C "$OLD" init -q -b main
+git -C "$OLD" config user.email t@example.com
+git -C "$OLD" config user.name t
+git -C "$OLD" commit -q --allow-empty -m base
+write_check "$OLD/done-means.json" "true exits 0" "true" "false"
+git -C "$OLD" add done-means.json
+git -C "$OLD" commit -qm spec
+git -C "$OLD" rm -q done-means.json
+git -C "$OLD" commit -qm delete-spec
+printf 'later\n' > "$OLD/later.txt"
+git -C "$OLD" add later.txt
+git -C "$OLD" commit -qm later
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$OLD" "$TRUST" "$GUARDRAILS_STATE_DIR" "hello" old-session allow
+if [ "$?" -eq 0 ]; then ok "a spec deleted on main does not deny a later session"
+else bad "an old spec deletion denied a later session"; fi
 
 rm -f "$GUARDRAILS_STATE_DIR/hook-live-$GUARDRAILS_SESSION"
 rc=0

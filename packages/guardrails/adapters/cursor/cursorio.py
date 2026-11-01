@@ -85,6 +85,10 @@ class Event:
         return self.raw.get("session_id") or self.raw.get("conversation_id") or ""
 
     @property
+    def stop_hook_active(self):
+        return bool(self.raw.get("stop_hook_active"))
+
+    @property
     def cwd(self):
         for candidate in (
             self.raw.get("cwd"),

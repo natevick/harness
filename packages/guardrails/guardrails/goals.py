@@ -93,6 +93,11 @@ DONE_CLAIM = re.compile(
     re.I,
 )
 BLOCKED_LINE = re.compile(r"^BLOCKED: \S.{9,}")
+QUESTION = re.compile(
+    r"^(?:who|what|when|where|why|how|which|is|are|am|do|does|did|can|could|"
+    r"should|would|will|shall|may|might|have|has|was|were)\b",
+    re.I,
+)
 
 NOTE = """<system-reminder>
 UNBOUNDED-WORK GATE
@@ -283,14 +288,22 @@ def spec_expected(cwd, session):
 
 def stop_excused(text):
     body = prose(text or "")
-    if claims_done(body):
-        return False
     lines = [line.strip() for line in body.splitlines() if line.strip()]
     if not lines:
         return False
     if BLOCKED_LINE.match(lines[0]):
-        return True
-    return lines[-1].endswith("?")
+        return not any(claims_done(line) for line in lines[1:])
+    sentences = []
+    for line in lines:
+        sentences.extend(
+            part.strip() for part in re.split(r"(?<=[.!])\s+", line) if part.strip()
+        )
+    if not sentences:
+        return False
+    earlier, last = sentences[:-1], sentences[-1]
+    if any(claims_done(part) for part in earlier):
+        return False
+    return last.endswith("?") and QUESTION.match(last) is not None
 
 
 def check_start(cwd, session, paths, command=""):
@@ -316,10 +329,12 @@ def check_start(cwd, session, paths, command=""):
     return PASS
 
 
-def check_stop(text, cwd, session=""):
+def check_stop(text, cwd, session="", continued=True):
     from . import done
-    from .live import hooks_live, record_stop_deny, stop_denies
+    from .live import hooks_live, record_stop_deny, reset_stop_denies, stop_denies
 
+    if not continued:
+        reset_stop_denies(session)
     if not spec_expected(cwd, session):
         return PASS
     if not hooks_live(session):

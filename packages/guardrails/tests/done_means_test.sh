@@ -25,6 +25,7 @@ doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
 doc["base"] = ensure_base(os.path.dirname(path) or ".")
 if flag == "off":
     doc["checks"][0]["sabotage"] = False
+    doc["checks"][0]["reason"] = "the check does not depend on the local diff"
 if extra == "human":
     doc["human"] = ["a reader can explain the tradeoff"]
 if extra == "none":

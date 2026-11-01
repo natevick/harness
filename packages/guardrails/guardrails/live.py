@@ -12,7 +12,8 @@ SPEC_SEEN = "spec-seen-"
 
 
 def _safe(session):
-    return re.sub(r"[^A-Za-z0-9_-]", "", str(session or ""))[:64]
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", str(session or ""))[:64]
+    return cleaned or "anonymous"
 
 
 def _touch(name):
@@ -80,6 +81,17 @@ def stop_denies(session):
         return int(open(path, errors="replace").read().strip() or "0")
     except (OSError, ValueError):
         return 0
+
+
+def reset_stop_denies(session):
+    path = _session_file("stop-denies-", session)
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        os.remove(path)
+    except OSError:
+        return None
+    return None
 
 
 def record_stop_deny(session):

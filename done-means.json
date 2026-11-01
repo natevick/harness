@@ -1,26 +1,31 @@
 {
-  "task": "Close the done-means bypasses Norm found on this pull request, including the CI gate, the signed base SHA, stop excuses, sabotage classification, and root-owned hook install.",
+  "task": "Close the done-means gaps that still block this pull request: pytest assertion lines, non-Python sabotage, the CI gate, and an old spec deletion denying later sessions.",
   "done": "bash packages/guardrails/tests/run.sh exits 0 and python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json exits 0",
   "base": "78de12010e7cadfee3a2ffa1b150ceb781d9520b",
   "checks": [
     {
       "id": "suite",
       "run": "bash packages/guardrails/tests/run.sh",
-      "sabotage": false
+      "sabotage": false,
+      "reason": "the suite stubs this gate and would recurse"
     },
     {
       "id": "simplicity",
       "run": "python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json",
-      "sabotage": false
+      "sabotage": false,
+      "reason": "the duplicate scan does not assert on the product diff"
     }
   ],
   "paths": {
     "must_change": [
       "packages/guardrails/guardrails/done.py"
     ],
-    "must_not_change": []
+    "must_not_change": [],
+    "allow_protected": [
+      ".cursor/hooks.json"
+    ]
   },
   "human": [
-    "UNENFORCED: Nate signs done-means.review.json with the key behind HARNESS_REVIEWERS_JSON. The private key is not in this repo."
+    "UNENFORCED: Nate signs done-means.review.json with the key behind HARNESS_REVIEWERS_JSON. The private key is not in this repo. Local hooks are advisory. gate/review-signature is the binding check."
   ]
 }

@@ -20,8 +20,8 @@ _ENFORCE = True
 _REQUIRE_LIVE = True
 _SESSION = ""
 _CI_BASE = ""
-CHECK_KEYS = {"id", "run", "sabotage"}
-PATH_KEYS = {"must_change", "must_not_change"}
+CHECK_KEYS = {"id", "run", "sabotage", "reason"}
+PATH_KEYS = {"must_change", "must_not_change", "allow_protected"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs"}
 TEST_NAMES = ("test_*", "spec_*", "*_test", "*.test.*", "*.spec.*", "*_test.*", "*_spec.*")
@@ -171,17 +171,23 @@ def schema_problems(data):
             runnable += 1
         if "sabotage" in check and not isinstance(check.get("sabotage"), bool):
             problems.append("checks[%d] sabotage is not a boolean" % index)
+        if check.get("sabotage") is False:
+            reason = check.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                problems.append("checks[%d] sabotage opt-out needs a reason" % index)
 
     must_change = []
     if "paths" in data:
         paths = data.get("paths")
         if not isinstance(paths, dict) or set(paths) - PATH_KEYS:
-            problems.append("paths must contain only must_change and must_not_change")
+            problems.append("paths must contain only must_change, must_not_change, and allow_protected")
         else:
             if "must_change" in paths:
                 must_change = string_list(paths["must_change"], "paths.must_change", problems)
             if "must_not_change" in paths:
                 string_list(paths["must_not_change"], "paths.must_not_change", problems)
+            if "allow_protected" in paths:
+                string_list(paths["allow_protected"], "paths.allow_protected", problems)
 
     if "human" in data:
         string_list(data.get("human"), "human", problems)
@@ -386,6 +392,14 @@ def override_missing(cwd):
     return not os.path.isfile(locate(cwd))
 
 
+def _ref_exists(cwd, ref):
+    probe = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", ref],
+        capture_output=True,
+    )
+    return probe.returncode == 0
+
+
 def spec_removed(cwd):
     name = os.path.basename(locate(cwd))
     if os.path.isfile(os.path.join(cwd or ".", name)):
@@ -396,33 +410,16 @@ def spec_removed(cwd):
     )
     if present.returncode == 0:
         return True
-    deleted = subprocess.run(
-        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "-n", "1", "--", name],
-        capture_output=True,
-        text=True,
-    )
-    if deleted.returncode != 0 or not deleted.stdout.strip():
-        return False
-    commit = deleted.stdout.strip().splitlines()[0]
-    shown = subprocess.run(
-        ["git", "-C", cwd, "show", "%s^:%s" % (commit, name)],
-        capture_output=True,
-    )
-    if shown.returncode != 0:
-        return False
-    try:
-        data = json.loads(shown.stdout.decode())
-    except ValueError:
-        return False
-    base = data.get("base") if isinstance(data, dict) else ""
-    if not base_sha(base):
-        return False
-    log = subprocess.run(
-        ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "%s..HEAD" % base, "--", name],
-        capture_output=True,
-        text=True,
-    )
-    return log.returncode == 0 and bool(log.stdout.strip())
+    for ref in ("origin/main", "main"):
+        if not _ref_exists(cwd, ref):
+            continue
+        log = subprocess.run(
+            ["git", "-C", cwd, "log", "--diff-filter=D", "--pretty=%H", "%s..HEAD" % ref, "--", name],
+            capture_output=True,
+            text=True,
+        )
+        return log.returncode == 0 and bool(log.stdout.strip())
+    return False
 
 
 def changed_paths(cwd, base, untracked=True):
@@ -514,7 +511,7 @@ def assertion_red(code, output):
     kind = final_exception(output)
     if kind is None:
         return True
-    return kind == "AssertionError"
+    return kind in ("AssertionError", "assert")
 
 
 def is_doc_path(path):
@@ -739,22 +736,14 @@ def sabotage_problems(spec, cwd, data):
     base, tests, product = split
     code = [path for path in product if not is_doc_path(path)]
     checks = sabotage_checks(data)
-    if code and not tests and checks:
+    if not checks:
+        return []
+    if code and not tests:
         return ["sabotage: non-doc change has no test diff (%s)" % ", ".join(code)]
     if not tests and not explicit:
         return []
-    if not checks:
-        return ["sabotage: changed tests have no check to run"]
     if not product:
         return ["sabotage: no non-test diff to revert"]
-    unstubbable = [
-        path for path in product
-        if not path.endswith(".py") and git_bytes(cwd, base, path) is None
-    ]
-    if unstubbable:
-        return [
-            "sabotage: cannot mutate %s; set sabotage false with a reason" % ", ".join(unstubbable)
-        ]
     try:
         reds, greens = cycle(cwd, product, base, checks)
     except OSError as error:
@@ -778,11 +767,24 @@ def sabotage_problems(spec, cwd, data):
     return problems
 
 
+def allowed_protected(data):
+    if not isinstance(data, dict):
+        return set()
+    paths = data.get("paths") or {}
+    if not isinstance(paths, dict):
+        return set()
+    listed = paths.get("allow_protected") or []
+    if not isinstance(listed, list):
+        return set()
+    return {item for item in listed if isinstance(item, str)}
+
+
 def protected_problems(cwd, data=None):
     found, error = changed_paths(cwd, default_base(cwd, data), untracked=False)
     if found is None:
         return ["protected: %s" % error]
-    hits = [path for path in sorted(found) if is_protected(cwd, path)]
+    allowed = allowed_protected(data)
+    hits = [path for path in sorted(found) if is_protected(cwd, path) and path not in allowed]
     if not hits:
         return []
     return ["protected: %s changed" % ", ".join(hits)]

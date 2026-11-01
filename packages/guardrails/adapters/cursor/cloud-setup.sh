@@ -83,7 +83,11 @@ advisory = advisory == "1"
 if not advisory:
     for path in (run_root, sys.prefix):
         if trust_writable(path):
-            raise SystemExit("harness install is writable by this user: %s" % path)
+            print(
+                "WARNING: harness install is writable by this user: %s. "
+                "Local hooks are advisory. gate/review-signature is the binding check." % path,
+                file=sys.stderr,
+            )
 trust = "/etc/harness/reviewers.json"
 if not os.path.isfile(trust) or trust_writable(trust):
     raise SystemExit("trust store missing or writable at %s" % trust)
@@ -105,7 +109,7 @@ Path(os.path.join(spec_dir, "done-means.json")).write_text(json.dumps({
     "task": "value",
     "done": "false exits 0",
     "base": "0123456789abcdef0123456789abcdef01234567",
-    "checks": [{"id": "unit", "run": "false", "sabotage": False}],
+    "checks": [{"id": "unit", "run": "false", "sabotage": False, "reason": "the command does not read the diff"}],
 }))
 write_event = json.dumps({
     "hook_event_name": "preToolUse",

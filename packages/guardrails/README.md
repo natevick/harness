@@ -28,6 +28,8 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 
 Done-means, including what is enforced and what is only recorded, is [`docs/done-means.md`](docs/done-means.md).
 
+Local hooks are advisory. The binding check is CI job `gate/review-signature`: it runs the signed spec off-box, with the reviewer trust store supplied as a secret. A hook on the agent's own machine cannot be the trust anchor.
+
 ## Coverage
 
 `live` = probed in [`RESULTS.md`](tests/live/RESULTS.md), which covers only `pipes` on a pre-shell

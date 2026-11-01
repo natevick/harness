@@ -24,7 +24,10 @@ def main():
         if source == "absent":
             cursorio.note_missing_stop_text(event, "goals")
             text = ""
-        return cursorio.decide(event, "goals", goals.check_stop(text or "", event.cwd, event.session))
+        return cursorio.decide(
+            event, "goals",
+            goals.check_stop(text or "", event.cwd, event.session, event.stop_hook_active),
+        )
     paths = paths_for(event)
     if not paths:
         return cursorio.allow(event)

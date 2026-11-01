@@ -35,7 +35,7 @@ json.dump({
     "task": "value",
     "done": "true exits 0",
     "base": base,
-    "checks": [{"id": "unit", "run": "false", "sabotage": False}],
+    "checks": [{"id": "unit", "run": "false", "sabotage": False, "reason": "the command does not read the diff"}],
 }, open(path, "w"))
 PY
 python3 "$ROOT/tests/review_sign.py" "$REPO/done-means.json" "$REVIEWER_ID" "$REVIEW_PRIV" fail
@@ -60,7 +60,7 @@ python3 - "$REPO/done-means.json" <<'PY'
 import json, sys
 path = sys.argv[1]
 data = json.load(open(path))
-data["checks"] = [{"id": "unit", "run": "true", "sabotage": False}]
+data["checks"] = [{"id": "unit", "run": "true", "sabotage": False, "reason": "the command does not read the diff"}]
 json.dump(data, open(path, "w"))
 PY
 rc=0
@@ -75,6 +75,61 @@ out="$(run_gate 2>&1)" || rc=$?
 if [ "$rc" -ne 0 ] && ! printf '%s' "$out" | grep -q "secret is required"; then
   ok "a deleted spec does not pass the CI gate"
 else bad "deleted spec rc=$rc $out"; fi
+
+python3 - "$REPO/done-means.json" "$BASE" <<'PY'
+import json, sys
+path, base = sys.argv[1:]
+json.dump({
+    "task": "value",
+    "done": "true exits 0",
+    "base": base,
+    "checks": [{"id": "unit", "run": "true", "sabotage": False, "reason": "the command does not read the diff"}],
+}, open(path, "w"))
+PY
+printf '2\n' > "$REPO/src-note"
+git -C "$REPO" add src-note done-means.json
+git -C "$REPO" commit -qm change
+python3 "$ROOT/tests/review_sign.py" "$REPO/done-means.json" "$REVIEWER_ID" "$REVIEW_PRIV" pass
+rc=0
+out="$(run_gate 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a signed sabotage opt-out with a reason passes the CI gate"
+else bad "opt-out rc=$rc $out"; fi
+
+mkdir -p "$REPO/.cursor"
+printf '%s\n' '{"version":1,"hooks":{}}' > "$REPO/.cursor/hooks.json"
+git -C "$REPO" add .cursor/hooks.json
+git -C "$REPO" commit -qm hooks
+python3 - "$REPO/done-means.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data["paths"] = {"allow_protected": [".cursor/hooks.json"]}
+json.dump(data, open(path, "w"))
+PY
+python3 "$ROOT/tests/review_sign.py" "$REPO/done-means.json" "$REVIEWER_ID" "$REVIEW_PRIV" pass
+rc=0
+out="$(run_gate 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a signed spec may allow a .cursor/hooks.json change"
+else bad "allowed hooks rc=$rc $out"; fi
+
+python3 - "$REPO/done-means.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data["checks"][0].pop("reason", None)
+json.dump(data, open(path, "w"))
+PY
+python3 "$ROOT/tests/review_sign.py" "$REPO/done-means.json" "$REVIEWER_ID" "$REVIEW_PRIV" pass
+rc=0
+out="$(run_gate 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q "sabotage opt-out needs a reason"; then
+  ok "a sabotage opt-out without a reason does not pass the CI gate"
+else bad "missing reason rc=$rc $out"; fi
+
+WF="$(cd "$ROOT/../.." && pwd)/.github/workflows/review-signature.yml"
+if grep -q 'npm ci --prefix packages/guardrails' "$WF" && grep -q 'pull_request.head.sha' "$WF"; then
+  ok "the review workflow installs jscpd and checks out the PR head"
+else bad "review workflow is missing npm ci or the PR head checkout"; fi
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
