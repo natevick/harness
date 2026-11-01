@@ -1,37 +1,32 @@
 {
-  "task": "Add opt-in duplicate-logic and catch-and-ignore guards that fail on the Selective review examples and pass once those examples are fixed.",
-  "done": "packages/guardrails/tests/duplicate_logic_guard_test.sh exits 0, packages/guardrails/tests/catch_ignore_guard_test.sh exits 0, and python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json exits 0",
+  "task": "Add the off-box review-signature gate that checks this spec's signed review.",
+  "done": "bash packages/guardrails/tests/ci_gate_test.sh exits 0 and python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json exits 0",
+  "base": "78de12010e7cadfee3a2ffa1b150ceb781d9520b",
   "checks": [
     {
-      "id": "duplicates",
-      "run": "bash packages/guardrails/tests/duplicate_logic_guard_test.sh",
-      "sabotage": true
-    },
-    {
-      "id": "catch-ignore",
-      "run": "bash packages/guardrails/tests/catch_ignore_guard_test.sh",
-      "sabotage": true
-    },
-    {
-      "id": "config",
-      "run": "python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json",
-      "sabotage": true
+      "id": "gate",
+      "run": "bash packages/guardrails/tests/ci_gate_test.sh",
+      "sabotage": false
     },
     {
       "id": "suite",
       "run": "bash packages/guardrails/tests/run.sh",
       "sabotage": false
+    },
+    {
+      "id": "simplicity",
+      "run": "python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json",
+      "sabotage": false
     }
   ],
   "paths": {
     "must_change": [
-      "packages/guardrails/check.py",
-      "packages/guardrails/guardrails/duplicates.py",
-      "packages/guardrails/guardrails/catch_ignore.py"
+      "packages/guardrails/guardrails/done.py",
+      ".github/workflows/review-signature.yml"
     ],
     "must_not_change": []
   },
   "human": [
-    "UNENFORCED: the two Ruby ENV variants that are not token-identical to the shared loop are a judgment. jscpd does not fail on them."
+    "UNENFORCED: Nate signs done-means.review.json after these fixes, with the public key only in HARNESS_REVIEWERS_JSON. Re-sign when main or this spec moves. Local hooks are advisory. gate/review-signature is the binding check."
   ]
 }

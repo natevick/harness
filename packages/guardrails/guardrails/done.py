@@ -11,6 +11,9 @@ from pathlib import Path
 from .goals import vague_clause, vague_prompt
 
 KEYS = {"task", "done", "checks", "paths", "human", "tests", "base"}
+_TRUST = None
+_ENFORCE = True
+_CI_BASE = ""
 CHECK_KEYS = {"id", "run", "sabotage"}
 PATH_KEYS = {"must_change", "must_not_change"}
 REVIEW_FLAGS = ("observable", "testable", "scoped", "stopping_point")
@@ -53,13 +56,34 @@ def spec_hash(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def load(path):
+def _no_duplicate_keys(pairs):
+    data = {}
+    for key, value in pairs:
+        if key in data:
+            raise ValueError("duplicate key: %s" % key)
+        data[key] = value
+    return data
+
+
+def read_json(path):
     try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return None
+        raw = Path(path).read_text()
+    except OSError:
+        return None, "%s is unreadable" % path
+    try:
+        data = json.loads(raw, object_pairs_hook=_no_duplicate_keys)
+    except ValueError as error:
+        message = str(error)
+        if message.startswith("duplicate key"):
+            return None, message
+        return None, "%s is not JSON" % path
     if not isinstance(data, dict):
-        return None
+        return None, "%s is not a JSON object" % path
+    return data, ""
+
+
+def load(path):
+    data, _error = read_json(path)
     return data
 
 
@@ -148,7 +172,7 @@ def schema_problems(data):
         string_list(data.get("human"), "human", problems)
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
-    if "base" in data and not base_sha(data.get("base")):
+    if not base_sha(data.get("base")):
         problems.append("base must be a 40-character lowercase hex SHA")
 
     if runnable == 0 and not must_change:
@@ -167,9 +191,9 @@ def review_problems(spec):
             ),
             "bind spec_sha256 to %s" % spec_hash(spec),
         ]
-    data = load(path)
-    if not isinstance(data, dict):
-        return ["review at %s is not a JSON object" % path]
+    data, error = read_json(path)
+    if error:
+        return ["review at %s: %s" % (path, error)]
 
     problems = []
     for key in ("gaps", "spec_sha256") + REVIEW_FLAGS:
@@ -188,7 +212,111 @@ def review_problems(spec):
             problems.append("review failed: %s is not true" % flag)
     if gaps:
         problems.append("review failed: %s" % "; ".join(gaps))
+    problems.extend(identity_problems(data))
     return problems
+
+
+def canonical_review(data):
+    body = {key: value for key, value in data.items() if key != "signature"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+
+
+def signature_ok(public_pem, message, signature_hex):
+    try:
+        signature = bytes.fromhex(signature_hex.strip())
+    except ValueError:
+        return False
+    parent = tempfile.mkdtemp(prefix="done-means-sig-")
+    try:
+        public_path = os.path.join(parent, "pub.pem")
+        message_path = os.path.join(parent, "msg")
+        signature_path = os.path.join(parent, "sig")
+        pem = public_pem if public_pem.endswith("\n") else public_pem + "\n"
+        Path(public_path).write_text(pem)
+        Path(message_path).write_bytes(message)
+        Path(signature_path).write_bytes(signature)
+        verified = subprocess.run(
+            [
+                "openssl", "pkeyutl", "-verify", "-pubin", "-inkey", public_path,
+                "-rawin", "-in", message_path, "-sigfile", signature_path,
+            ],
+            capture_output=True,
+        )
+        return verified.returncode == 0
+    except OSError:
+        return False
+    finally:
+        shutil.rmtree(parent, ignore_errors=True)
+
+
+def trust_writable(path):
+    uid = os.geteuid()
+    current = path
+    seen = set()
+    while current and current not in seen:
+        seen.add(current)
+        try:
+            info = os.stat(current)
+        except OSError:
+            return True
+        if info.st_uid == uid or os.access(current, os.W_OK):
+            return True
+        mode = info.st_mode
+        if mode & 0o022:
+            return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return False
+
+
+def identity_problems(data):
+    if _TRUST is None:
+        return []
+    reviewer = data.get("reviewer")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        return ["review missing reviewer"]
+    reviewer = reviewer.strip()
+    signature = data.get("signature")
+    if not isinstance(signature, str) or not signature.strip():
+        return ["review missing signature"]
+    if not os.path.isfile(_TRUST):
+        return ["no reviewer trust store at %s" % _TRUST]
+    if _ENFORCE and trust_writable(_TRUST):
+        return ["trust store is writable by this user"]
+    trust = load(_TRUST)
+    if not isinstance(trust, dict):
+        return ["no reviewer trust store at %s" % _TRUST]
+    pem = trust.get(reviewer)
+    if not isinstance(pem, str) or not pem.strip():
+        return ["reviewer %s is not in the trust store" % reviewer]
+    if not signature_ok(pem, canonical_review(data), signature):
+        return ["review signature is not valid"]
+    return []
+
+
+def bind_trust(path, enforce_ownership=True):
+    global _TRUST, _ENFORCE
+    _TRUST = path
+    _ENFORCE = bool(enforce_ownership)
+
+
+def release_trust():
+    global _TRUST, _ENFORCE, _CI_BASE
+    _TRUST = None
+    _ENFORCE = True
+    _CI_BASE = ""
+
+
+def configure(trust=None, enforce_ownership=True, require_live=True, ci_base_ref=""):
+    global _CI_BASE
+    del require_live
+    if trust is None:
+        release_trust()
+    else:
+        bind_trust(trust, enforce_ownership)
+    _CI_BASE = ci_base_ref or ""
 
 
 def matches(pattern, path):
@@ -198,11 +326,47 @@ def matches(pattern, path):
     return fnmatch(path, pattern) or fnmatch(os.path.basename(path), pattern)
 
 
-def default_base(cwd):
+def resolve_base(cwd, data):
+    raw = data.get("base") if isinstance(data, dict) else None
+    if not base_sha(raw):
+        return None, "base must be a 40-character lowercase hex SHA"
+    head = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", "HEAD"],
+        capture_output=True,
+    )
+    if head.returncode != 0:
+        if _CI_BASE:
+            return None, "base: cannot merge-base refs/remotes/origin/%s with HEAD" % _CI_BASE
+        return raw, ""
+    if _CI_BASE:
+        ref = "refs/remotes/origin/%s" % _CI_BASE
+        merged = subprocess.run(
+            ["git", "-C", cwd, "merge-base", ref, "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if merged.returncode != 0:
+            return None, "base: cannot merge-base %s with HEAD" % ref
+        expected = merged.stdout.strip()
+        if raw != expected:
+            return None, "base is not the merge-base with %s" % ref
+        return raw, ""
+    ancestor = subprocess.run(
+        ["git", "-C", cwd, "merge-base", "--is-ancestor", raw, "HEAD"],
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        return None, "base is not an ancestor of HEAD"
+    return raw, ""
+
+
+def default_base(cwd, data=None):
+    if isinstance(data, dict) and base_sha(data.get("base")):
+        return data.get("base")
     chosen = os.environ.get("GUARDRAILS_DONE_BASE")
     if chosen:
         return chosen
-    for candidate in ("origin/main", "main"):
+    for candidate in ("origin/HEAD",):
         probe = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", candidate],
             capture_output=True,
@@ -240,7 +404,7 @@ def path_problems(cwd, data):
     must_not = paths.get("must_not_change") or []
     if not must and not must_not:
         return []
-    found, error = changed_paths(cwd, default_base(cwd))
+    found, error = changed_paths(cwd, default_base(cwd, data))
     if found is None:
         return ["paths: %s" % error]
     problems = []
@@ -284,7 +448,7 @@ def sabotage_checks(data):
 
 
 def split_changes(cwd, spec, data):
-    base = default_base(cwd)
+    base = default_base(cwd, data)
     changed, error = changed_paths(cwd, base)
     if changed is None:
         return None, error
@@ -412,7 +576,7 @@ def sabotage_problems(spec, cwd, data):
         return []
     checks = sabotage_checks(data)
     if not checks:
-        return ["sabotage: changed tests have no check to run"]
+        return []
     if not product:
         return ["sabotage: no non-test diff to revert"]
     try:
@@ -431,15 +595,18 @@ def sabotage_problems(spec, cwd, data):
 
 
 def execute(spec, cwd, data):
+    _base, error = resolve_base(cwd, data)
+    if error:
+        return [error]
     return command_problems(cwd, data) + path_problems(cwd, data) + sabotage_problems(spec, cwd, data)
 
 
 def spec_problems(spec):
     if not os.path.isfile(spec):
         return missing_problems(spec), None
-    data = load(spec)
-    if data is None:
-        return ["%s is not JSON" % spec], None
+    data, error = read_json(spec)
+    if error:
+        return [error], None
     return schema_problems(data), data
 
 
@@ -454,7 +621,10 @@ def finish_problems(cwd, spec=None):
     problems, data = spec_problems(spec)
     if problems:
         return problems, data
-    return review_problems(spec) + execute(spec, cwd, data), data
+    review = review_problems(spec)
+    if review:
+        return review, data
+    return execute(spec, cwd, data), data
 
 
 def format_block(problems):
@@ -482,7 +652,20 @@ hash       print the spec sha256 a review must cite
 """
 
 
-def main(argv):
+def main(argv, trust=None, enforce_ownership=True, require_live=True, ci_base_ref=""):
+    configure(
+        trust=trust,
+        enforce_ownership=enforce_ownership,
+        require_live=require_live,
+        ci_base_ref=ci_base_ref,
+    )
+    try:
+        return _main(argv)
+    finally:
+        release_trust()
+
+
+def _main(argv):
     if len(argv) < 2 or argv[1] in ("-h", "--help"):
         print(USAGE.strip())
         return 0 if len(argv) > 1 else 2
