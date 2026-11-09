@@ -23,12 +23,17 @@ def main():
         text, source = cursorio.assistant_text(event)
         if source == "absent":
             cursorio.note_missing_stop_text(event, "goals")
-            return 0
-        return cursorio.decide(event, "goals", goals.check_stop(text, event.cwd, event.session))
+            text = ""
+        return cursorio.decide(
+            event, "goals",
+            goals.check_stop(text or "", event.cwd, event.session, event.stop_hook_active),
+        )
     paths = paths_for(event)
     if not paths:
         return cursorio.allow(event)
-    return cursorio.decide(event, "goals", goals.check_start(event.cwd, event.session, paths))
+    return cursorio.decide(
+        event, "goals", goals.check_start(event.cwd, event.session, paths, event.command)
+    )
 
 
 if __name__ == "__main__":

@@ -2,36 +2,30 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+export SPEC_BASE_DIR="$ROOT/tests"
 CLI="$ROOT/done_means.py"
 CURSOR="$ROOT/adapters/cursor"
 HOOK="$ROOT/adapters/hookjson"
 TMP="$(mktemp -d)"
 export GUARDRAILS_STATE_DIR="$TMP/state"
 mkdir -p "$GUARDRAILS_STATE_DIR"
-trap 'rm -rf "$TMP"' EXIT
+. "$ROOT/tests/fixture.sh"
+begin_reviewer_fixture
+trap 'end_reviewer_fixture; rm -rf "$TMP"' EXIT
 pass=0
 fail=0
 
-ok() { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
-bad() { fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; }
-
-cli() {
-  python3 "$CLI" "$@" >"$TMP/out" 2>"$TMP/err"
-}
-
-shows() {
-  local name="$1" needle="$2"
-  if grep -q "$needle" "$TMP/out"; then ok "$name"
-  else bad "$name (missing $needle) $(cat "$TMP/out")"; fi
-}
-
 write_spec() {
   python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
-import json, sys
+import json, os, sys
+sys.path.insert(0, os.environ["SPEC_BASE_DIR"])
 path, done, run, flag, extra = sys.argv[1:]
+from spec_base import ensure_base
 doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
+doc["base"] = ensure_base(os.path.dirname(path) or ".")
 if flag == "off":
     doc["checks"][0]["sabotage"] = False
+    doc["checks"][0]["reason"] = "the check does not depend on the local diff"
 if extra == "human":
     doc["human"] = ["a reader can explain the tradeoff"]
 if extra == "none":
@@ -44,25 +38,14 @@ if extra == "vague-run":
     doc["checks"][0]["run"] = "loop until zero failing"
 if extra.startswith("base:"):
     doc["base"] = extra.split(":", 1)[1]
+if extra == "omit-base":
+    doc.pop("base", None)
 json.dump(doc, open(path, "w"))
 PY
 }
 
 write_review() {
-  python3 - "$1" "$2" <<'PY'
-import hashlib, json, sys
-spec, verdict = sys.argv[1:]
-ok = verdict == "pass"
-digest = hashlib.sha256(open(spec, "rb").read()).hexdigest()
-json.dump({
-    "gaps": [] if ok else ["final state is not observable"],
-    "observable": ok,
-    "testable": ok,
-    "scoped": ok,
-    "stopping_point": ok,
-    "spec_sha256": digest,
-}, open(spec.replace(".json", ".review.json"), "w"))
-PY
+  python3 "$ROOT/tests/review_sign.py" "$1" "$REVIEWER_ID" "$REVIEW_PRIV" "$2"
 }
 
 plant() {
@@ -85,7 +68,22 @@ cursor_fire() {
 }
 
 cursor_write() {
-  cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"preToolUse","tool_name":"Write","session_id":"clear","cwd":sys.argv[1],"tool_input":{"file_path":sys.argv[1]+"/src/a.py","content":"x = 1\n"}}))' "$1")"
+  python3 - "$ROOT" "$1" "$TRUST" "$GUARDRAILS_STATE_DIR" <<'PY' >"$TMP/out" 2>"$TMP/err"
+import json, os, sys
+root, repo, trust, state = sys.argv[1:]
+os.environ["GUARDRAILS_STATE_DIR"] = state
+sys.path.insert(0, root)
+from guardrails.done import bind_trust
+from guardrails.goals import check_start
+from guardrails.live import note_hook
+bind_trust(trust, False)
+note_hook("clear")
+verdict = check_start(repo, "clear", [os.path.join(repo, "src", "a.py")], "")
+print(json.dumps({
+    "permission": "deny" if verdict.decision == "deny" else "allow",
+    "agent_message": verdict.reason,
+}))
+PY
 }
 
 expect() {
@@ -198,7 +196,7 @@ cli validate "$PLAIN" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "make clean is a command, not a vague sentence"
 else bad "make clean rc=$rc $(cat "$TMP/out")"; fi
 
-echo "── optional base is a 40-character lowercase hex SHA ──"
+echo "── base is an optional 40-character lowercase hex SHA ──"
 BASE_SHA="0123456789abcdef0123456789abcdef01234567"
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "base:$BASE_SHA"
 write_review "$PLAIN/done-means.json" pass
@@ -223,8 +221,9 @@ reject_base "a non-hex base" "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
 reject_base "a ref name base" "main"
 reject_base "an uppercase base" "0123456789ABCDEF0123456789ABCDEF01234567"
 reject_base "a 41-character base" "${BASE_SHA}0"
+reject_base "a padded base" " ${BASE_SHA}"
 
-write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" ""
+write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "omit-base"
 write_review "$PLAIN/done-means.json" pass
 rc=0
 cli validate "$PLAIN" || rc=$?
@@ -248,15 +247,12 @@ shows "REPLACE inside a task is the placeholder" "placeholder"
 echo "── done is blocked when a check fails ──"
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "false" "off" ""
 write_review "$PLAIN/done-means.json" pass
-cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"stop","status":"completed","session_id":"stop","cwd":sys.argv[1],"text":"This is done."}))' "$PLAIN")"
-python3 -c '
-import json,sys
-d=json.load(open(sys.argv[1]))
-sys.exit(0 if "exited" in d.get("followup_message","") else 1)
-' "$TMP/out" && ok "stop followup blocks a done claim while a check fails" || bad "stop: $(cat "$TMP/out") err=$(cat "$TMP/err")"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PLAIN" "$TRUST" "$GUARDRAILS_STATE_DIR" "This is done." stop reason >"$TMP/out" 2>"$TMP/err"
+if grep -q "exited" "$TMP/out"; then ok "stop followup blocks a done claim while a check fails"
+else bad "stop: $(cat "$TMP/out") err=$(cat "$TMP/err")"; fi
 
-cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"stop","status":"completed","session_id":"stop","cwd":sys.argv[1],"text":"The spec is written."}))' "$PLAIN")"
-if [ ! -s "$TMP/out" ]; then ok "a stop that does not claim done is left alone"
+python3 "$ROOT/tests/check_stop.py" "$ROOT" "$PLAIN" "$TRUST" "$GUARDRAILS_STATE_DIR" "The spec is written." stop reason >"$TMP/out" 2>"$TMP/err"
+if grep -q "exited" "$TMP/out"; then ok "a non-question stop is denied while the gate fails"
 else bad "quiet stop produced $(cat "$TMP/out")"; fi
 
 echo "── run reverts the non-test diff itself ──"
@@ -349,6 +345,27 @@ d=json.load(open(sys.argv[1]))
 sys.exit(0 if "no done-means spec" in d.get("followup_message","") else 1)
 ' "$TMP/out" && ok "a noted task still engages stop with no spec" || bad "task stop: $(cat "$TMP/out")"
 
+echo "── changed tests with no check that can be sabotaged block ──"
+NOCHECK="$TMP/no-sabotage-check"
+plant "$NOCHECK" "grep -qx 2 src/value.txt"
+write_spec "$NOCHECK/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "off" ""
+write_review "$NOCHECK/done-means.json" pass
+rc=0
+cli run "$NOCHECK" || rc=$?
+if [ "$rc" -ne 0 ]; then ok "a test change whose checks are all sabotage:false blocks"
+else bad "all-sabotage-false test change exited 0 $(cat "$TMP/out")"; fi
+shows "the block names the missing check" "changed tests have no check to run"
+
+echo "── a spec without base runs locally ──"
+NOBASE="$TMP/no-base-run"
+plant "$NOBASE" "grep -qx 2 src/value.txt"
+write_spec "$NOBASE/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "" "omit-base"
+write_review "$NOBASE/done-means.json" pass
+rc=0
+cli run "$NOBASE" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a spec without base passes run locally"
+else bad "omitted base rc=$rc $(cat "$TMP/out")"; fi
+
 echo "── the revert runs off the live tree ──"
 SIDE="$TMP/side"
 LIVE="$TMP/live2"
@@ -437,15 +454,19 @@ json.dump({
     }],
 }, open(os.path.join(repo, "done-means.sabotage.json"), "w"))
 PY
-hold_pid=$(python3 - "$CLI" "$HOLD" "$TMP/hold-out" "$TMP/hold-err" <<'PY'
-import subprocess, sys
-cli, hold, out_path, err_path = sys.argv[1:]
+hold_pid=$(python3 - "$ROOT/tests/invoke_done.py" "$TRUST" "$HOLD" "$TMP/hold-out" "$TMP/hold-err" "$GUARDRAILS_STATE_DIR" "$GUARDRAILS_SESSION" <<'PY'
+import os, subprocess, sys
+cli, trust, hold, out_path, err_path, state, session = sys.argv[1:]
+env = dict(os.environ)
+env["GUARDRAILS_STATE_DIR"] = state
+env["GUARDRAILS_SESSION"] = session
 proc = subprocess.Popen(
-    [sys.executable, cli, "run", hold],
+    [sys.executable, cli, trust, "run", hold],
     stdin=subprocess.DEVNULL,
     stdout=open(out_path, "w"),
     stderr=open(err_path, "w"),
     start_new_session=True,
+    env=env,
 )
 print(proc.pid)
 PY

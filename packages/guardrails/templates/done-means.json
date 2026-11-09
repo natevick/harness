@@ -1,4 +1,5 @@
 {
+  "author": "REPLACE",
   "task": "REPLACE",
   "done": "REPLACE with an observable end state, such as test/tax.test.js exits 0",
   "checks": [

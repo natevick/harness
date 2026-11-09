@@ -20,8 +20,12 @@ All four booleans must be true and `gaps` must be empty. A false flag or a gap b
   "testable": true,
   "scoped": true,
   "stopping_point": true,
-  "spec_sha256": "<sha256 of the spec bytes>"
+  "spec_sha256": "<sha256 of the spec bytes>",
+  "reviewer": "<id in the reviewer trust store>",
+  "signature": "<hex Ed25519 signature of the canonical JSON of this object with signature removed>"
 }
 ```
+
+Canonical JSON is `json.dumps` with `sort_keys` and compact separators. Sign that byte string. The CI gate reads the public keys from the `HARNESS_REVIEWERS_JSON` secret. The private key is not on the agent machine.
 
 The spec's `human` list is unenforced. Do not treat it as a check, and do not move a machine-checkable outcome into it to avoid the validator.

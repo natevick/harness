@@ -58,6 +58,8 @@ Harnesses: `claude-code`, `codex`, `kimi`, `grok`, `cursor`. Omit `--target` to 
 
 See [`SECURITY.md`](SECURITY.md) for state-dir permissions, decision logging, and residual risk around bench jails.
 
+Local hooks are advisory. They nudge an honest mistake; they are not a boundary against an agent that controls the machine they run on. The binding check is the off-box `gate/review-signature` workflow, which runs the signed done-means spec against the reviewer trust store.
+
 ## CI
 
 Push/PR (and manual `workflow_dispatch`) runs on **Linux and macOS** via [`.github/workflows/guardrails-test.yml`](.github/workflows/guardrails-test.yml):
@@ -66,6 +68,7 @@ Push/PR (and manual `workflow_dispatch`) runs on **Linux and macOS** via [`.gith
 - `npm ci --prefix packages/guardrails` (the duplicate-logic check shells out to jscpd)
 - Primary: `packages/guardrails/tests/run.sh` (Python 3.10+)
 - `python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json`
+- `gate/review-signature` on pull requests: the signed done-means spec. Local hooks are advisory; this job is the binding check.
 
 ## License
 
