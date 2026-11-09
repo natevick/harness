@@ -66,6 +66,7 @@ Push/PR (and manual `workflow_dispatch`) runs on **Linux and macOS** via [`.gith
 - `npm ci --prefix packages/guardrails` (the duplicate-logic check shells out to jscpd)
 - Primary: `packages/guardrails/tests/run.sh` (Python 3.10+)
 - `python3 packages/guardrails/check.py --config packages/guardrails/simplicity.json`
+- `gate/review-signature` on pull requests: the signed done-means spec. Local hooks are advisory; this job is the binding check.
 
 ## License
 

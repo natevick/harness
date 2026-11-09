@@ -28,6 +28,8 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 
 Done-means, including what is enforced and what is only recorded, is [`docs/done-means.md`](docs/done-means.md).
 
+Local hooks are advisory. The binding check is CI job `gate/review-signature`: it runs the signed spec off-box. A hook on the agent's own machine is not the trust anchor.
+
 ## Coverage
 
 `live` = probed in [`RESULTS.md`](tests/live/RESULTS.md), which covers only `pipes` on a pre-shell
@@ -138,7 +140,7 @@ pass/fail summary — a suite that reports nothing because it ran nothing.
 | `GUARDRAILS_COMMAND_WRAPPERS` | empty | wrapper commands to look through before `gh`/`git` |
 | `GUARDRAILS_NOTIFY_COMMANDS` | empty | commands whose `--notify` text is budgeted |
 | `GUARDRAILS_DONE_MEANS` | `done-means.json` in the work tree | `off` stands the gate down; any other value is the spec path |
-| `GUARDRAILS_DONE_BASE` | `origin/main`, else `main`, else `HEAD` | git rev for path diffs and the revert |
+| `GUARDRAILS_DONE_BASE` | `origin/HEAD`, else `HEAD` | git rev for path diffs and the revert, used only when the spec has no `base` |
 
 `decisions.jsonl` stores a truncated SHA-256 of the command, not the command; state files are 0600
 in a 0700 directory. Shell writes needing expansion are out of scope — see

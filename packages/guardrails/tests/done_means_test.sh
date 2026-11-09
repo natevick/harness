@@ -27,9 +27,12 @@ shows() {
 
 write_spec() {
   python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
-import json, sys
+import json, os, subprocess, sys
 path, done, run, flag, extra = sys.argv[1:]
 doc = {"task": "value", "done": done, "checks": [{"id": "unit", "run": run}]}
+repo = os.path.dirname(os.path.abspath(path)) or "."
+probe = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
+doc["base"] = probe.stdout.strip() if probe.returncode == 0 else "0123456789abcdef0123456789abcdef01234567"
 if flag == "off":
     doc["checks"][0]["sabotage"] = False
 if extra == "human":
@@ -44,6 +47,8 @@ if extra == "vague-run":
     doc["checks"][0]["run"] = "loop until zero failing"
 if extra.startswith("base:"):
     doc["base"] = extra.split(":", 1)[1]
+if extra == "omit-base":
+    doc.pop("base", None)
 json.dump(doc, open(path, "w"))
 PY
 }
@@ -198,7 +203,7 @@ cli validate "$PLAIN" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "make clean is a command, not a vague sentence"
 else bad "make clean rc=$rc $(cat "$TMP/out")"; fi
 
-echo "── optional base is a 40-character lowercase hex SHA ──"
+echo "── base is an optional 40-character lowercase hex SHA ──"
 BASE_SHA="0123456789abcdef0123456789abcdef01234567"
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "base:$BASE_SHA"
 write_review "$PLAIN/done-means.json" pass
@@ -224,7 +229,7 @@ reject_base "a ref name base" "main"
 reject_base "an uppercase base" "0123456789ABCDEF0123456789ABCDEF01234567"
 reject_base "a 41-character base" "${BASE_SHA}0"
 
-write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" ""
+write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "omit-base"
 write_review "$PLAIN/done-means.json" pass
 rc=0
 cli validate "$PLAIN" || rc=$?
@@ -348,6 +353,27 @@ import json,sys
 d=json.load(open(sys.argv[1]))
 sys.exit(0 if "no done-means spec" in d.get("followup_message","") else 1)
 ' "$TMP/out" && ok "a noted task still engages stop with no spec" || bad "task stop: $(cat "$TMP/out")"
+
+echo "── changed tests with no check that can be sabotaged block ──"
+NOCHECK="$TMP/no-sabotage-check"
+plant "$NOCHECK" "grep -qx 2 src/value.txt"
+write_spec "$NOCHECK/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "off" ""
+write_review "$NOCHECK/done-means.json" pass
+rc=0
+cli run "$NOCHECK" || rc=$?
+if [ "$rc" -ne 0 ]; then ok "a test change whose checks are all sabotage:false blocks"
+else bad "all-sabotage-false test change exited 0 $(cat "$TMP/out")"; fi
+shows "the block names the missing check" "changed tests have no check to run"
+
+echo "── a spec without base runs locally ──"
+NOBASE="$TMP/no-base-run"
+plant "$NOBASE" "grep -qx 2 src/value.txt"
+write_spec "$NOBASE/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "" "omit-base"
+write_review "$NOBASE/done-means.json" pass
+rc=0
+cli run "$NOBASE" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a spec without base passes run locally"
+else bad "omitted base rc=$rc $(cat "$TMP/out")"; fi
 
 echo "── the revert runs off the live tree ──"
 SIDE="$TMP/side"
