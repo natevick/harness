@@ -6,7 +6,7 @@
     {
       "id": "gate",
       "run": "bash packages/guardrails/tests/ci_gate_test.sh",
-      "sabotage": false
+      "sabotage": true
     },
     {
       "id": "suite",

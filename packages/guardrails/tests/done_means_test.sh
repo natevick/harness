@@ -203,7 +203,7 @@ cli validate "$PLAIN" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "make clean is a command, not a vague sentence"
 else bad "make clean rc=$rc $(cat "$TMP/out")"; fi
 
-echo "── base is a required 40-character lowercase hex SHA ──"
+echo "── base is an optional 40-character lowercase hex SHA ──"
 BASE_SHA="0123456789abcdef0123456789abcdef01234567"
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "base:$BASE_SHA"
 write_review "$PLAIN/done-means.json" pass
@@ -233,9 +233,8 @@ write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "omit-b
 write_review "$PLAIN/done-means.json" pass
 rc=0
 cli validate "$PLAIN" || rc=$?
-if [ "$rc" -ne 0 ]; then ok "a spec without base fails validation"
-else bad "missing base exited 0 $(cat "$TMP/out")"; fi
-shows "a missing base names the SHA rule" "base must be a 40-character lowercase hex SHA"
+if [ "$rc" -eq 0 ] && ! grep -q "base" "$TMP/out"; then ok "a spec without base validates unchanged"
+else bad "missing base rc=$rc $(cat "$TMP/out")"; fi
 
 write_spec "$PLAIN/done-means.json" "test/tax.test.js exits 0" "true" "" "human"
 write_review "$PLAIN/done-means.json" pass
@@ -354,6 +353,17 @@ import json,sys
 d=json.load(open(sys.argv[1]))
 sys.exit(0 if "no done-means spec" in d.get("followup_message","") else 1)
 ' "$TMP/out" && ok "a noted task still engages stop with no spec" || bad "task stop: $(cat "$TMP/out")"
+
+echo "── changed tests with no check that can be sabotaged block ──"
+NOCHECK="$TMP/no-sabotage-check"
+plant "$NOCHECK" "grep -qx 2 src/value.txt"
+write_spec "$NOCHECK/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "off" ""
+write_review "$NOCHECK/done-means.json" pass
+rc=0
+cli run "$NOCHECK" || rc=$?
+if [ "$rc" -ne 0 ]; then ok "a test change whose checks are all sabotage:false blocks"
+else bad "all-sabotage-false test change exited 0 $(cat "$TMP/out")"; fi
+shows "the block names the missing check" "changed tests have no check to run"
 
 echo "── the revert runs off the live tree ──"
 SIDE="$TMP/side"

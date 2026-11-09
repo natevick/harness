@@ -172,7 +172,7 @@ def schema_problems(data):
         string_list(data.get("human"), "human", problems)
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
-    if not base_sha(data.get("base")):
+    if ("base" in data or _CI_BASE) and not base_sha(data.get("base")):
         problems.append("base must be a 40-character lowercase hex SHA")
 
     if runnable == 0 and not must_change:
@@ -328,6 +328,8 @@ def matches(pattern, path):
 
 def resolve_base(cwd, data):
     raw = data.get("base") if isinstance(data, dict) else None
+    if raw is None and not _CI_BASE:
+        return None, ""
     if not base_sha(raw):
         return None, "base must be a 40-character lowercase hex SHA"
     head = subprocess.run(
@@ -576,7 +578,7 @@ def sabotage_problems(spec, cwd, data):
         return []
     checks = sabotage_checks(data)
     if not checks:
-        return []
+        return ["sabotage: changed tests have no check to run"]
     if not product:
         return ["sabotage: no non-test diff to revert"]
     try:

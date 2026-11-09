@@ -208,6 +208,75 @@ else
   bad "unsigned marker rc=$rc exists=$( [ -e "$MARKER" ] && echo yes || echo no )"
 fi
 
+echo "── the signature is checked against the trusted key for the named reviewer ──"
+openssl genpkey -algorithm ED25519 -out "$TMP/attacker.pem"
+signed_fixture() {
+  local dir="$1" base
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git_identity "$dir"
+  git -C "$dir" commit -q --allow-empty -m base
+  base="$(git -C "$dir" rev-parse HEAD)"
+  write_touch_spec "$dir/done-means.json" "$base" "$dir/ran-marker"
+}
+expect_blocked() {
+  local dir="$1" message="$2" label="$3" rc=0
+  gate "$dir" >"$dir.out" 2>"$dir.err" || rc=$?
+  if [ "$rc" -ne 0 ] && grep -qF "$message" "$dir.out" && [ ! -e "$dir/ran-marker" ]; then
+    ok "$label"
+  else
+    bad "$label: rc=$rc out=$(cat "$dir.out") marker=$( [ -e "$dir/ran-marker" ] && echo yes || echo no )"
+  fi
+}
+
+SIG_OK="$TMP/sig-ok"
+signed_fixture "$SIG_OK"
+sign_pass "$SIG_OK/done-means.json"
+rc=0
+gate "$SIG_OK" >"$SIG_OK.out" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ] && [ -e "$SIG_OK/ran-marker" ]; then ok "a review signed by the trusted key runs its check"
+else bad "trusted signature rc=$rc out=$(cat "$SIG_OK.out")"; fi
+
+SIG_WRONG="$TMP/sig-wrong"
+signed_fixture "$SIG_WRONG"
+python3 "$ROOT/tests/review_sign.py" "$SIG_WRONG/done-means.json" "$REVIEWER_ID" "$TMP/attacker.pem" pass
+expect_blocked "$SIG_WRONG" "review signature is not valid" "a trusted reviewer id signed with another key does not run the check"
+
+SIG_UNKNOWN="$TMP/sig-unknown"
+signed_fixture "$SIG_UNKNOWN"
+python3 "$ROOT/tests/review_sign.py" "$SIG_UNKNOWN/done-means.json" stranger@example.com "$TMP/reviewer.pem" pass
+expect_blocked "$SIG_UNKNOWN" "reviewer stranger@example.com is not in the trust store" "an unknown reviewer id does not run the check"
+
+SIG_FLIPPED="$TMP/sig-flipped"
+signed_fixture "$SIG_FLIPPED"
+python3 "$ROOT/tests/review_sign.py" "$SIG_FLIPPED/done-means.json" "$REVIEWER_ID" "$TMP/reviewer.pem" fail
+python3 - "$SIG_FLIPPED/done-means.review.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data.update(gaps=[], observable=True, testable=True, scoped=True, stopping_point=True)
+json.dump(data, open(path, "w"))
+PY
+expect_blocked "$SIG_FLIPPED" "review signature is not valid" "a review flipped to pass after signing does not run the check"
+
+SIG_NOBASE="$TMP/sig-nobase"
+signed_fixture "$SIG_NOBASE"
+python3 - "$SIG_NOBASE/done-means.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+del data["base"]
+json.dump(data, open(sys.argv[1], "w"))
+PY
+sign_pass "$SIG_NOBASE/done-means.json"
+rc=0
+gate "$SIG_NOBASE" trunk >"$SIG_NOBASE.out" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ] && grep -qF "base must be a 40-character lowercase hex SHA" "$SIG_NOBASE.out" && [ ! -e "$SIG_NOBASE/ran-marker" ]; then
+  ok "a spec without base does not run in CI"
+else
+  bad "CI spec without base rc=$rc out=$(cat "$SIG_NOBASE.out")"
+fi
+
 echo "── own-verifier fallback only on the default branch ──"
 SELECT="$TMP/select"
 rm -rf "$SELECT" "$TMP/select.git"
@@ -374,8 +443,7 @@ GITHUB_WORKSPACE="$AT" BASE_REF=trunk DEFAULT_BRANCH=trunk HARNESS_REVIEWERS_JSO
   bash "$VERIFY_RUN" >"$TMP/tag-a" 2>"$TMP/tag-a-err" || rc=$?
 if [ "$rc" -ne 0 ]; then ok "a shadow tag with a stub verifier does not pass"
 else bad "stub tag passed: $(cat "$TMP/tag-a") $(cat "$TMP/tag-a-err")"; fi
-git -C "$SW" tag -f origin/trunk "$OLD"
-git -C "$SW" push -q --force origin refs/tags/origin/trunk
+git -C "$SH" update-ref refs/tags/origin/trunk "$OLD"
 git -C "$AT" fetch -q origin "+refs/tags/origin/trunk:refs/tags/origin/trunk"
 rc=0
 GITHUB_WORKSPACE="$AT" BASE_REF=trunk DEFAULT_BRANCH=trunk HARNESS_REVIEWERS_JSON="$TRUST_JSON" \
