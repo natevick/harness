@@ -172,7 +172,7 @@ def schema_problems(data):
         string_list(data.get("human"), "human", problems)
     if "tests" in data:
         string_list(data.get("tests"), "tests", problems)
-    if ("base" in data or _CI_BASE) and not base_sha(data.get("base")):
+    if "base" in data and not base_sha(data.get("base")):
         problems.append("base must be a 40-character lowercase hex SHA")
 
     if runnable == 0 and not must_change:

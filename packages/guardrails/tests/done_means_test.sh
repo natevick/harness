@@ -365,6 +365,16 @@ if [ "$rc" -ne 0 ]; then ok "a test change whose checks are all sabotage:false b
 else bad "all-sabotage-false test change exited 0 $(cat "$TMP/out")"; fi
 shows "the block names the missing check" "changed tests have no check to run"
 
+echo "── a spec without base runs locally ──"
+NOBASE="$TMP/no-base-run"
+plant "$NOBASE" "grep -qx 2 src/value.txt"
+write_spec "$NOBASE/done-means.json" "test/check.sh exits 0 when src/value.txt is 2" "bash test/check.sh" "" "omit-base"
+write_review "$NOBASE/done-means.json" pass
+rc=0
+cli run "$NOBASE" || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a spec without base passes run locally"
+else bad "omitted base rc=$rc $(cat "$TMP/out")"; fi
+
 echo "── the revert runs off the live tree ──"
 SIDE="$TMP/side"
 LIVE="$TMP/live2"
