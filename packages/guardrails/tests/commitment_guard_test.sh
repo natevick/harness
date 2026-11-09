@@ -29,6 +29,16 @@ print(json.dumps({"transcript_path": sys.argv[1], "session_id": "test",
 ' "$1" "${2:-false}" | python3 "$HOOK" 2>"$TMP/err.txt"
 }
 
+tally() {
+  local expect="$1" name="$2" rc="$3" verdict
+  if [ "$rc" -eq 2 ]; then verdict="block"; else verdict="pass"; fi
+  if [ "$verdict" = "$expect" ]; then
+    pass=$((pass + 1)); printf '  ok   %-58s (%s)\n' "$name" "$verdict"
+  else
+    fail=$((fail + 1)); printf '  FAIL %-58s expected %s, got %s\n' "$name" "$expect" "$verdict"
+  fi
+}
+
 check() {
   local expect="$1" name="$2" text="$3" stop_active="${4:-false}"
   local file="$TMP/t-$RANDOM.jsonl" verdict rc=0
@@ -149,12 +159,7 @@ with open(path, "w") as fh:
         fh.write(json.dumps(record) + "\n")
 ' "$file" "$tool" "$input" "$position"
   run_hook "$file" >/dev/null || rc=$?
-  if [ "$rc" -eq 2 ]; then verdict="block"; else verdict="pass"; fi
-  if [ "$verdict" = "$expect" ]; then
-    pass=$((pass + 1)); printf '  ok   %-58s (%s)\n' "$name" "$verdict"
-  else
-    fail=$((fail + 1)); printf '  FAIL %-58s expected %s, got %s\n' "$name" "$expect" "$verdict"
-  fi
+  tally "$expect" "$name" "$rc"
 }
 launched pass "a background Bash" Bash '{"command":"sleep 600","run_in_background":true}' this-turn
 launched pass "an Agent" Agent '{"prompt":"review it"}' this-turn
@@ -210,12 +215,7 @@ print(json.dumps({"transcript_path": sys.argv[1], "session_id": "test",
                   "stop_hook_active": False}))
 ' "$file" | env GUARDRAILS_COMMITMENT_MECHANISMS="$mechanisms" python3 "$HOOK" \
     >/dev/null 2>"$TMP/err.txt" || rc=$?
-  if [ "$rc" -eq 2 ]; then verdict="block"; else verdict="pass"; fi
-  if [ "$verdict" = "$expect" ]; then
-    pass=$((pass + 1)); printf '  ok   %-58s (%s)\n' "$name" "$verdict"
-  else
-    fail=$((fail + 1)); printf '  FAIL %-58s expected %s, got %s\n' "$name" "$expect" "$verdict"
-  fi
+  tally "$expect" "$name" "$rc"
 }
 configured pass "a name the deployment configured is accepted" "crontab,Scheduler" \
   "I will re-check the alarm — Scheduler set for 08:00 PT."
