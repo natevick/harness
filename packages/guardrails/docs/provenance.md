@@ -110,12 +110,15 @@ A verbal-only promise dies at session end, which means it never existed. Six of 
 48-hour window ending 2026-09-02.
 
 Accepted mechanisms: a cron line or `crontab` entry, a scheduler call, a `/loop`, an absolute
-path that exists on disk, a pull-request or issue URL, a `TASKS.md` row. The phrase "no
+path that exists on disk, a pull-request or issue URL, a `TASKS.md` row, or a background job,
+agent, monitor or scheduled wake launched in the same turn. The phrase "no
 mechanism" is an accepted, honest downgrade — saying a thing is unowned is better than a promise
 nobody will keep.
 
-Offers are not commitments: "say the word and I'll do it" is waiting on the user, and the guard
-skips those sentences.
+Offers are not commitments: "say the word and I'll do it" and "reply go and I'll push it" are
+waiting on the user, and the guard skips those sentences, along with sentences that start with
+"If" or are a real question. A promise with a tag question on the end ("I'll push it tonight,
+okay?") is still a promise.
 
 ## goals — unbounded work
 

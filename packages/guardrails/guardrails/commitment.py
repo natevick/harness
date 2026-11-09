@@ -25,11 +25,22 @@ SCHEDULED = [
 FIRST_PERSON = re.compile(r"\b(?:I|I(?:'|’)m|we|we(?:'|’)re)\b", re.I)
 
 OFFER = re.compile(
-    r"\bsay\s+(?:the\s+word|ship|so|otherwise|which|when|yes|no)\b"
+    r"\bsay\s+(?:the\s+word|ship|so|otherwise|which|when|yes|no|go)\b"
     r"|\bif\s+you\b|\bonce\s+you\b|\bwhen\s+you\b|\bunless\s+you\b"
     r"|\byou\s+say\b|\byour\s+call\b|\btell\s+me\b|\bwant\s+me\s+to\b",
     re.I,
 )
+
+GATED = re.compile(
+    r"^\W*(?:(?:either|or|then|just|please)\s+)*"
+    r"(?:send|reply|say|start|approve|run|name|pick|give|tell|confirm)\b[^.?!\n]*\band\s+I(?:'|’)ll\b",
+    re.I,
+)
+CONDITIONAL = re.compile(r"^\W*if\b", re.I)
+QUESTION = re.compile(r"\?\W*$")
+TAG = re.compile(r"^(.*)[,;\u2014\u2013]\s*[^,;\u2014\u2013]*\?\W*$", re.S)
+LEAD = re.compile(r"^\W*(?:(?:and|so|ok|okay|then|also|now)\W+)*", re.I)
+MARKUP = re.compile(r"[*_\"“”]")
 
 DEFAULT_MECHANISMS = "crontab,cron,CronCreate,ScheduleWakeup,/loop,TASKS.md"
 DOWNGRADE = re.compile(r"\bno\s+mechanism\b", re.I)
@@ -57,7 +68,8 @@ BLOCK = (
     "downgrade the language.\n\n"
     "A verbal-only promise dies at session end, which means it never existed. Mechanisms this "
     "guard accepts: {mechanisms}, a cron expression, an absolute path that exists on disk, a "
-    "pull-request or issue URL, or a tracked issue or task file. If none of those is warranted, "
+    "pull-request or issue URL, or a tracked issue or task file; a background job, agent, "
+    "monitor or scheduled wake launched this turn also counts. If none of those is warranted, "
     "say so in the reply \u2014 the words \"no mechanism\" are an accepted, honest downgrade."
 )
 
@@ -103,9 +115,31 @@ def mechanism(text):
     )
 
 
+def promises_before_tag(sentence):
+    tagged = TAG.match(sentence)
+    if tagged:
+        return any(pattern.search(tagged.group(1)) for pattern, _ in PROMISE)
+    lead = LEAD.match(sentence).end()
+    return any(pattern.match(sentence, lead) for pattern, _ in PROMISE)
+
+
+def is_question(sentence):
+    return bool(QUESTION.search(sentence)) and not promises_before_tag(sentence)
+
+
+def not_a_promise(sentence):
+    plain = MARKUP.sub("", sentence)
+    return bool(
+        OFFER.search(plain)
+        or GATED.search(plain)
+        or CONDITIONAL.search(plain)
+        or is_question(plain)
+    )
+
+
 def commitment(text):
     for sentence in sentences(prose(text)):
-        if OFFER.search(sentence):
+        if not_a_promise(sentence):
             continue
         for pattern, label in PROMISE:
             if pattern.search(sentence):

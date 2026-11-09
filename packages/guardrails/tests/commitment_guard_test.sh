@@ -9,6 +9,7 @@ pass=0
 fail=0
 
 printf '{}' > "$TMP/settings.json"
+printf 'next steps' > "$TMP/HANDOFF.md"
 
 transcript() {
   python3 -c '
@@ -73,6 +74,8 @@ check pass "an issue URL" \
   "I'm going to park it on https://github.com/example-org/example-dotfiles/issues/7."
 check pass "an absolute path that exists" \
   "I'll work from $TMP/settings.json in the morning."
+check pass "a handoff file that exists" \
+  "I'll resume this tomorrow from the handoff at $TMP/HANDOFF.md."
 check pass "a TASKS.md row" "I'll pick up T20 — row added to TASKS.md."
 check pass "ScheduleWakeup" "I will re-check the alarm — ScheduleWakeup set for 08:00 PT."
 check pass "CronCreate" "I will schedule it — CronCreate for 08:00 PT."
@@ -100,6 +103,101 @@ check pass "a conditional offer" \
   "If you want the overnight window checked, I'll take it."
 check block "an offer plus a real promise still blocks" \
   "Say the word and I'll uncomment the sweep. Separately, I'll post the rule-126 numbers in the morning."
+
+echo "── MUST PASS — an instruction to the user, then \"and I'll\" ──"
+check pass "reply with a quoted phrase" 'Reply "apply phase 2" and I'"'"'ll push it.'
+check pass "send, and I'll confirm" "Send a photo of the bottom label and I'll confirm."
+check pass "either say **go** and I'll" "You can either say **go** and I'll launch it from here, or hold."
+check block "narration with and I'll mid-sentence is still a promise" \
+  "I'll run the suite and I'll push it tomorrow."
+
+echo "── MUST PASS — a conditional or a question is not a promise ──"
+check pass "a sentence starting with If" "If the preflight fails, I'll re-run it tomorrow."
+check pass "If after a bullet and bold marker" "- **If** it misses, I'll come to you with the numbers tomorrow."
+check block "a trailing if-clause is still a promise" "I'll merge it tomorrow if CI passes."
+check pass "a question to the user" "Keep it, or I'll replace it some other way?"
+check block "a question beside a real promise" "I'll check it tomorrow. Sound good?"
+check pass "a real question about a promise" "Should I push this tonight?"
+check block "a promise with a tag question" "I'll push the fix to main tonight, okay?"
+check block "a tag question with no comma" "I'll push the fix to main tonight okay?"
+check block "a tag question after a dash" "I'll push the fix tonight — does that work?"
+check block "a promise behind an opener, then a tag" "Tonight I'll push the fix, right?"
+check block "a conjunction opener, then a tag" "Okay, I'll push the fix tonight, yeah?"
+
+echo "── MUST PASS — a mechanism was launched this turn ──"
+launched() {
+  local expect="$1" name="$2" tool="$3" input="$4" position="$5"
+  local file="$TMP/l-$RANDOM.jsonl" verdict rc=0
+  python3 -c '
+import json, sys
+path, tool, tool_input, position = sys.argv[1:5]
+human = {"type": "user", "message": {"content": "go"}}
+launch = {"type": "assistant", "message": {"content": [
+    {"type": "tool_use", "id": "t1", "name": tool, "input": json.loads(tool_input)}]}}
+result = {"type": "user", "message": {"content": [
+    {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}}
+final = {"type": "assistant", "message": {"content": [
+    {"type": "text", "text": "I will pick this up when they report back."}]}}
+wake = {"type": "user", "message": {"content": "<task-notification>done</task-notification>"}}
+order = {
+    "this-turn": [human, launch, result, final],
+    "earlier-turn": [launch, result, human, final],
+    "after-wake": [human, launch, result, wake, final],
+}[position]
+with open(path, "w") as fh:
+    for record in order:
+        fh.write(json.dumps(record) + "\n")
+' "$file" "$tool" "$input" "$position"
+  run_hook "$file" >/dev/null || rc=$?
+  if [ "$rc" -eq 2 ]; then verdict="block"; else verdict="pass"; fi
+  if [ "$verdict" = "$expect" ]; then
+    pass=$((pass + 1)); printf '  ok   %-58s (%s)\n' "$name" "$verdict"
+  else
+    fail=$((fail + 1)); printf '  FAIL %-58s expected %s, got %s\n' "$name" "$expect" "$verdict"
+  fi
+}
+launched pass "a background Bash" Bash '{"command":"sleep 600","run_in_background":true}' this-turn
+launched pass "an Agent" Agent '{"prompt":"review it"}' this-turn
+launched pass "a SendMessage" SendMessage '{"to":"reviewer","message":"go"}' this-turn
+launched pass "a Monitor" Monitor '{"command":"tail -f x"}' this-turn
+launched pass "a CronCreate" CronCreate '{"cron":"0 8 * * *"}' this-turn
+launched pass "a ScheduleWakeup" ScheduleWakeup '{"delaySeconds":600}' this-turn
+launched pass "a launch before a task-notification wake, same turn" Agent '{"prompt":"x"}' after-wake
+launched block "a foreground Bash is not a mechanism" Bash '{"command":"sleep 1"}' this-turn
+launched block "a launch in an earlier turn does not cover this one" Agent '{"prompt":"x"}' earlier-turn
+
+echo "── a malformed record in the turn must not take the guard down ──"
+malformed() {
+  local expect="$1" name="$2" message="$3" launch="$4"
+  local file="$TMP/m-$RANDOM.jsonl" rc=0 verdict
+  python3 -c '
+import json, sys
+path, message, launch = sys.argv[1:4]
+records = [{"type": "user", "message": {"content": "go"}},
+           {"type": "assistant", "message": json.loads(message)}]
+if launch == "yes":
+    records.append({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"prompt": "x"}}]}})
+with open(path, "w") as fh:
+    for record in records:
+        fh.write(json.dumps(record) + "\n")
+' "$file" "$message" "$launch"
+  python3 -c '
+import json, sys
+print(json.dumps({"transcript_path": sys.argv[1], "session_id": "test", "stop_hook_active": False,
+                  "last_assistant_message": "I will pick this up tomorrow."}))
+' "$file" | python3 "$HOOK" 2>"$TMP/err.txt" >/dev/null || rc=$?
+  if [ "$rc" -eq 2 ]; then verdict="block"; else verdict="pass"; fi
+  if [ "$verdict" = "$expect" ] && ! grep -q Traceback "$TMP/err.txt"; then
+    pass=$((pass + 1)); printf '  ok   %-58s (%s)\n' "$name" "$verdict"
+  else
+    fail=$((fail + 1)); printf '  FAIL %-58s expected %s, got %s\n' "$name" "$expect" "$verdict"
+    printf '       %s\n' "$(tail -1 "$TMP/err.txt")"
+  fi
+}
+malformed block "a null message" "null" no
+malformed block "a string message" '"oops"' no
+malformed pass "a null message before a launch" "null" yes
 
 echo "── THE ACCEPTED LIST IS CONFIGURATION, NOT A HOUSE STYLE ──"
 configured() {
@@ -178,7 +276,8 @@ file="$TMP/msg.jsonl"
 transcript "$file" "I'll check the overnight window in the morning."
 run_hook "$file" >/dev/null
 if grep -q "Commitment without a mechanism: 'I'll check the overnight window in the morning.'" "$TMP/err.txt" &&
-   grep -q "Build one (cron, task, file, PR) or downgrade the language" "$TMP/err.txt"; then
+   grep -q "Build one (cron, task, file, PR) or downgrade the language" "$TMP/err.txt" &&
+   grep -q "an absolute path that exists on disk" "$TMP/err.txt"; then
   pass=$((pass + 1)); echo "  ok   quotes the phrase and names the fix"
 else
   fail=$((fail + 1)); echo "  FAIL message was: $(cat "$TMP/err.txt")"
