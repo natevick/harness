@@ -370,3 +370,67 @@ def assistant_reply(event):
         note_missing_stop_text(event)
         return None
     return final_assistant_text(transcript)
+
+
+SYNTHETIC_PROMPTS = re.compile(
+    r"\s*(?:<task-notification|<system-reminder|<local-command|<command-name|<bash-|"
+    r"Stop hook feedback|\[Request interrupted)"
+)
+HUMAN_ORIGINS = (None, "human", "channel")
+WORKER_TOOLS = ("Agent", "Task", "SendMessage", "Monitor", "CronCreate", "ScheduleWakeup")
+
+
+def message_content(record):
+    message = record.get("message")
+    return message.get("content") if isinstance(message, dict) else None
+
+
+def prompt_text(record):
+    content = message_content(record)
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    if any(isinstance(chunk, dict) and chunk.get("type") == "tool_result" for chunk in content):
+        return ""
+    return "".join(
+        chunk.get("text", "") for chunk in content
+        if isinstance(chunk, dict) and chunk.get("type") == "text"
+    ) or "[attachment]"
+
+
+def is_human_prompt(record):
+    if record.get("type") != "user" or record.get("isSidechain") or record.get("isCompactSummary"):
+        return False
+    origin = record.get("origin")
+    kind = origin.get("kind") if isinstance(origin, dict) else None
+    if kind not in HUMAN_ORIGINS or (record.get("isMeta") and kind != "channel"):
+        return False
+    text = prompt_text(record)
+    return bool(text) and not SYNTHETIC_PROMPTS.match(text)
+
+
+def turn_records(path):
+    window = []
+    for record in reversed(records(path)):
+        window.append(record)
+        if is_human_prompt(record):
+            return window
+    return []
+
+
+def launches_worker(path):
+    if not path:
+        return False
+    for record in turn_records(path):
+        if record.get("type") != "assistant" or record.get("isSidechain"):
+            continue
+        content = message_content(record)
+        for chunk in content if isinstance(content, list) else []:
+            if not isinstance(chunk, dict) or chunk.get("type") != "tool_use":
+                continue
+            fields = chunk.get("input")
+            background = isinstance(fields, dict) and fields.get("run_in_background")
+            if chunk.get("name") in WORKER_TOOLS or background:
+                return True
+    return False
