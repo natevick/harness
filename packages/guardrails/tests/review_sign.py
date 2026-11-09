@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import subprocess
@@ -40,12 +41,24 @@ def write_review(spec, reviewer, private_key, verdict):
         "testable": ok,
         "scoped": ok,
         "stopping_point": ok,
-        "spec_sha256": __import__("hashlib").sha256(Path(spec).read_bytes()).hexdigest(),
+        "spec_sha256": hashlib.sha256(Path(spec).read_bytes()).hexdigest(),
         "reviewer": reviewer,
     }
     document["signature"] = sign_bytes(canonical_review(document), private_key)
     Path(os.path.splitext(spec)[0] + ".review.json").write_text(json.dumps(document))
     return document["spec_sha256"]
+
+
+def write_unsigned_review(spec):
+    document = {
+        "gaps": [],
+        "observable": True,
+        "testable": True,
+        "scoped": True,
+        "stopping_point": True,
+        "spec_sha256": hashlib.sha256(Path(spec).read_bytes()).hexdigest(),
+    }
+    Path(os.path.splitext(spec)[0] + ".review.json").write_text(json.dumps(document))
 
 
 def write_trust(path, reviewer, public_pem_path):
@@ -54,6 +67,9 @@ def write_trust(path, reviewer, public_pem_path):
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] == "--unsigned":
+        write_unsigned_review(argv[2])
+        return 0
     if len(argv) >= 2 and argv[1] == "--trust":
         if len(argv) != 5:
             print("usage: review_sign.py --trust <path> <public-pem> <reviewer>", file=sys.stderr)

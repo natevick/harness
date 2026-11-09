@@ -35,7 +35,7 @@ json.dump({
     "task": "value",
     "done": "true exits 0",
     "base": base,
-    "checks": [{"id": "marker", "run": "touch %s" % marker, "sabotage": False}],
+    "checks": [{"id": "marker", "run": "touch %s" % marker, "sabotage": False, "reason": "the command does not read the diff"}],
 }, open(path, "w"))
 PY
 }
@@ -48,7 +48,7 @@ json.dump({
     "task": "value",
     "done": "true exits 0",
     "base": base,
-    "checks": [{"id": "pass", "run": "true", "sabotage": False}],
+    "checks": [{"id": "pass", "run": "true", "sabotage": False, "reason": "the command does not read the diff"}],
 }, open(path, "w"))
 PY
 }
@@ -187,19 +187,7 @@ git -C "$UNSIGN" commit -q --allow-empty -m base
 BASE="$(git -C "$UNSIGN" rev-parse HEAD)"
 MARKER="$UNSIGN/ran-marker"
 write_touch_spec "$UNSIGN/done-means.json" "$BASE" "$MARKER"
-python3 - "$UNSIGN/done-means.json" <<'PY'
-import hashlib, json, sys
-spec = sys.argv[1]
-digest = hashlib.sha256(open(spec, "rb").read()).hexdigest()
-json.dump({
-    "gaps": [],
-    "observable": True,
-    "testable": True,
-    "scoped": True,
-    "stopping_point": True,
-    "spec_sha256": digest,
-}, open(spec.replace(".json", ".review.json"), "w"))
-PY
+python3 "$ROOT/tests/review_sign.py" --unsigned "$UNSIGN/done-means.json"
 rc=0
 gate "$UNSIGN" || rc=$?
 if [ "$rc" -ne 0 ] && [ ! -e "$MARKER" ]; then
@@ -469,6 +457,59 @@ GITHUB_WORKSPACE="$LEG" BASE_REF=trunk DEFAULT_BRANCH=trunk HARNESS_REVIEWERS_JS
   bash "$VERIFY_RUN" >"$TMP/tag-ok" 2>"$TMP/tag-ok-err" || rc=$?
 if [ "$rc" -eq 0 ]; then ok "a signed spec still passes while the shadow tag exists"
 else bad "signed spec with tag rc=$rc $(cat "$TMP/tag-ok") $(cat "$TMP/tag-ok-err")"; fi
+
+echo "── a signed spec can opt out of the sabotage check, allow a hook file, and name a reason ──"
+OPT="$TMP/opt-repo"
+mkdir -p "$OPT"
+git -C "$OPT" init -q
+git_identity "$OPT"
+git -C "$OPT" commit -q --allow-empty -m base
+OPT_BASE="$(git -C "$OPT" rev-parse HEAD)"
+write_opt_spec() {
+  python3 - "$OPT/done-means.json" "$OPT_BASE" "$1" "$2" <<'PY'
+import json, sys
+path, base, reason, allow = sys.argv[1:]
+check = {"id": "unit", "run": "true", "sabotage": False}
+if reason == "reason":
+    check["reason"] = "the command does not read the diff"
+spec = {"task": "value", "done": "true exits 0", "base": base, "checks": [check]}
+if allow == "allow":
+    spec["paths"] = {"allow_protected": [".cursor/hooks.json"]}
+json.dump(spec, open(path, "w"))
+PY
+  sign_pass "$OPT/done-means.json"
+}
+printf '2\n' > "$OPT/src-note"
+git -C "$OPT" add src-note
+git -C "$OPT" commit -qm change
+write_opt_spec reason none
+rc=0
+gate "$OPT" >"$TMP/opt-out" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a signed sabotage opt-out with a reason passes the CI gate"
+else bad "opt-out rc=$rc $(cat "$TMP/opt-out")"; fi
+
+mkdir -p "$OPT/.cursor"
+printf '%s\n' '{"version":1,"hooks":{}}' > "$OPT/.cursor/hooks.json"
+git -C "$OPT" add .cursor/hooks.json
+git -C "$OPT" commit -qm hooks
+write_opt_spec reason none
+rc=0
+gate "$OPT" >"$TMP/opt-hooks" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ] && grep -q "protected: .cursor/hooks.json changed" "$TMP/opt-hooks"; then
+  ok "an unlisted .cursor/hooks.json change does not pass the CI gate"
+else bad "unlisted hooks rc=$rc $(cat "$TMP/opt-hooks")"; fi
+write_opt_spec reason allow
+rc=0
+gate "$OPT" >"$TMP/opt-allow" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then ok "a signed spec may allow a .cursor/hooks.json change"
+else bad "allowed hooks rc=$rc $(cat "$TMP/opt-allow")"; fi
+
+write_opt_spec noreason allow
+rc=0
+gate "$OPT" >"$TMP/opt-noreason" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ] && grep -q "sabotage opt-out needs a reason" "$TMP/opt-noreason"; then
+  ok "a sabotage opt-out without a reason does not pass the CI gate"
+else bad "missing reason rc=$rc $(cat "$TMP/opt-noreason")"; fi
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
