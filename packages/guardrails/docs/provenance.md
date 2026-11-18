@@ -56,6 +56,13 @@ Quoted spans are stripped before matching. The first version matched the words "
 inside an echo string and blocked a read-only `ps` command — the same defect as the truncation
 guard firing on its own test data. Only real command positions count.
 
+2026-11-18: `pkill -u norm sleep` from a subagent killed every `sleep` owned by the user on the host,
+including the devcontainer's `sleep infinity`. The `-f` rule did not fire because no `-f` was used.
+`pkill` now denies unless every selector is a numeric `-g`/`-P`/`-s` and no pattern is given;
+`killall` always denies; `kill` fed by `pgrep`/`pidof` denies. The denial points at the brokered
+route (`broker-run --sudo`), which passes. There is no env override. Not covered: a lookup stored in
+a variable first (`p=$(pgrep x); kill $p`), loops over a lookup, and `ps`-fed kills.
+
 ## truncation — output that landed exactly on its own cap
 
 This is the failure that cost the most in one segfault investigation: 30 lines of a CI config

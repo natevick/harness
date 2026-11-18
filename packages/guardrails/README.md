@@ -14,7 +14,7 @@ The comments guard is the reason this repo exists. A Claude Code hook on `Write|
 | --- | --- | --- |
 | `comments` | a comment or docstring added by a file write, a shell heredoc, a `git apply` patch, or a Codex patch | deny |
 | `pipes` | reading `$?` after piping into `head`/`tail`/`wc`/`cut`/… | deny |
-| `pkill` | `pkill -f`, which matches the shell running it | deny (`pgrep -f` warns) |
+| `pkill` | `pkill -f`, which matches the shell running it; and any kill by name or user: `pkill` other than `-g`/`-P`/`-s` with numeric ids, `killall`, `kill` fed by `pgrep`/`pidof` | deny (`pgrep -f` warns) |
 | `review_brevity` | an over-budget PR body, review, comment, commit message or chat message | deny |
 | `brevity` | a reply over the prose-word budget | nudge at next prompt; deny at stop past 2x |
 | `commitment` | "I'll do X" with no cron, task, file, PR or explicit downgrade | deny at stop |
@@ -130,7 +130,7 @@ pass/fail summary — a suite that reports nothing because it ran nothing.
 | `GUARDRAILS_COMMIT_BODY_WORDS` | `200` | commit message budget |
 | `GUARDRAILS_MESSAGE_WORDS` | `150` | comment, chat and notification budget |
 | `GUARDRAILS_ALLOW_LONG_REVIEW` | unset | stand the outbound-brevity guard down |
-| `GUARDRAILS_ALLOW_PKILL_F` | unset | allow `pkill -f` |
+| `GUARDRAILS_ALLOW_PKILL_F` | unset | allow `pkill -f` with no name selected; the name gate has no override |
 | `GUARDRAILS_COMMITMENT_MECHANISMS` | `crontab,cron,CronCreate,ScheduleWakeup,/loop,TASKS.md` | names that count as a mechanism |
 | `GUARDRAILS_COMMAND_WRAPPERS` | unset | wrapper commands to look past before `gh`/`git` |
 | `GUARDRAILS_NOTIFY_COMMANDS` | unset | commands whose `--notify` text is budgeted |
