@@ -199,10 +199,10 @@ def check_command(command):
 
     findings = set()
     scan(commands(command), findings)
-    if FULL in findings and not os.environ.get("GUARDRAILS_ALLOW_PKILL_F"):
-        return deny(DENIAL)
     if NAME in findings:
         return deny(NAME_DENIAL)
+    if FULL in findings and not os.environ.get("GUARDRAILS_ALLOW_PKILL_F"):
+        return deny(DENIAL)
     if PGREP_FULL in findings:
         return warn(CAUTION)
     return PASS

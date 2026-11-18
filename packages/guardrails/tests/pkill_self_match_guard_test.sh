@@ -311,11 +311,17 @@ if [ -n "$name_text" ] && [ "$lines" -ge 1 ] && [ "$lines" -le 12 ]; then
 else
   fail=$((fail + 1)); printf '  FAIL the denial is %s lines (max 12)\n' "$lines"
 fi
-out="$(run "pkill -f watch-both.sh")"
-if printf '%s' "$out" | grep -q 'matches the shell running it'; then
-  pass=$((pass + 1)); echo "  ok   pkill -f with a pattern shows the more specific self-match text"
+out="$(run "pkill -f \"mix test\"")"
+if printf '%s' "$out" | grep -q 'broker-run' && ! printf '%s' "$out" | grep -q 'GUARDRAILS_ALLOW_PKILL_F'; then
+  pass=$((pass + 1)); echo "  ok   pkill -f with a pattern shows the name text, not the -f override"
 else
-  fail=$((fail + 1)); printf '  FAIL pkill -f text lost: %s\n' "$out"
+  fail=$((fail + 1)); printf '  FAIL pkill -f with a pattern showed the wrong text: %s\n' "$out"
+fi
+out="$(run "pkill -f -g 123")"
+if printf '%s' "$out" | grep -q 'matches the shell running it'; then
+  pass=$((pass + 1)); echo "  ok   pkill -f with no name selected shows the self-match text"
+else
+  fail=$((fail + 1)); printf '  FAIL pkill -f -g text lost: %s\n' "$out"
 fi
 out="$(run "pkill -u norm sleep")"
 if printf '%s' "$out" | grep -q 'broker-run'; then
@@ -333,7 +339,7 @@ check silent "pgrep -f quoted inside a string" "echo 'run pgrep -f watch'"
 
 echo
 echo "THE TEXTS CARRY THE FIX:"
-out="$(run "pkill -f watch-both.sh")"
+out="$(run "pkill -f -g 123")"
 if printf '%s' "$out" | grep -q 'GUARDRAILS_ALLOW_PKILL_F=1'; then
   pass=$((pass + 1)); echo "  ok   the denial names its override"
 else
