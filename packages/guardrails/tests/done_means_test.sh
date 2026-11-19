@@ -127,6 +127,9 @@ sys.exit(0 if d.get("permission")=="deny" and "no done-means spec" in d.get("age
 cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"beforeShellExecution","session_id":"clear","cwd":sys.argv[1],"command":"cat > "+sys.argv[1]+"/src/b.py <<EOF\nx = 1\nEOF"}))' "$REPO")"
 expect "a shell heredoc is denied with the spec missing" 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("permission")=="deny" else 1)'
 
+cursor_fire done_means_guard.py "$(python3 -c 'import json,sys; print(json.dumps({"hook_event_name":"preToolUse","tool_name":"Write","session_id":"clear","cwd":sys.argv[1],"tool_input":{"file_path":sys.argv[2]+"/memory/note.md","content":"x\\n"}}))' "$REPO" "$TMP/elsewhere")"
+expect "a write outside the project is not gated" 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("permission")=="allow" else 1)'
+
 write_spec "$REPO/done-means.json" "make it robust" "true" "" ""
 write_review "$REPO/done-means.json" pass
 cursor_write "$REPO"
