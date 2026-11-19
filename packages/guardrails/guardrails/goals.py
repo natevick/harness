@@ -257,13 +257,28 @@ def engaged(cwd, session):
     return task_open(session) or os.path.isfile(done.locate(cwd))
 
 
+def project_root(cwd):
+    import subprocess
+
+    found = subprocess.run(
+        ["git", "-C", cwd or ".", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    return os.path.realpath(found.stdout.strip() if found.returncode == 0 else cwd or ".")
+
+
+def in_project(cwd, path):
+    root = project_root(cwd)
+    target = os.path.realpath(os.path.join(cwd or ".", path))
+    return target == root or target.startswith(root + os.sep)
+
+
 def check_start(cwd, session, paths):
     from . import done
 
     if done.stood_down() or not engaged(cwd, session):
         return PASS
     spec = done.locate(cwd)
-    if paths and all(done.allowed_write(cwd, path) for path in paths):
+    if paths and all(done.allowed_write(cwd, path) or not in_project(cwd, path) for path in paths):
         return PASS
     problems, _data = done.start_problems(cwd, spec)
     if problems:
